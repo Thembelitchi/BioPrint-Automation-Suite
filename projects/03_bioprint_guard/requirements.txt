@@ -1,0 +1,5 @@
+asyncua>=1.1
+numpy>=1.26
+neo4j>=5.20,<6
+# Optional: Isolation Forest detector (--detector iforest)
+scikit-learn>=1.4

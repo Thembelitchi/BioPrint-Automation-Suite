@@ -1,0 +1,22 @@
+# Local Neo4j for GraphPrint-Twin and BioPrint-Guard.
+# Browser: http://localhost:7474   Bolt: bolt://localhost:7687   Auth: disabled (demo only)
+services:
+  neo4j:
+    image: neo4j:5-community
+    container_name: bioprint-neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: "none"
+      NEO4J_server_memory_heap_max__size: "1G"
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+volumes:
+  neo4j_data:

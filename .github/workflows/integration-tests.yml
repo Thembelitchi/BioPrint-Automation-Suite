@@ -1,0 +1,36 @@
+name: integration-tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (Ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Ruff check
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+  # Sub-project jobs are added as each release ships:
+  #   v0.2.0  graphprint-twin  (Neo4j service container)
+  #   v0.3.0  bioprint-pid     (dashboard uploaded as artifact)
+  #   v0.4.0  bioprint-guard   (OPC UA server -> gateway -> Neo4j assertion)
