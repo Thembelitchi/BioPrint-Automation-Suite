@@ -30,7 +30,58 @@ jobs:
       - name: Ruff format check
         run: ruff format --check .
 
-  # Sub-project jobs are added as each release ships:
-  #   v0.2.0  graphprint-twin  (Neo4j service container)
+  graphprint-twin:
+    name: GraphPrint-Twin (Neo4j)
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: projects/01_graphprint_twin
+
+    services:
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: none
+        ports:
+          - 7687:7687
+          - 7474:7474
+
+    env:
+      NEO4J_URI: bolt://localhost:7687
+      # The bridge polls until Neo4j accepts Bolt connections (no image-specific health check needed).
+      NEO4J_WAIT_SECONDS: "120"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: projects/01_graphprint_twin/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Unit tests (FR-1, FR-3)
+        run: NEO4J_URI= python -m pytest tests/test_plc_simulator.py tests/test_database.py
+
+      - name: Telemetry pipeline, 10 cycles (FR-1 to FR-4)
+        run: python src/main.py --cycles 10 --interval 1.0
+
+      - name: Graph integration tests (FR-2 to FR-4)
+        run: python -m pytest tests/test_integration.py
+
+      - name: Upload traceback
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphprint-twin-traceback
+          path: projects/01_graphprint_twin/output/
+          if-no-files-found: ignore
+
+  # Planned:
   #   v0.3.0  bioprint-pid     (dashboard uploaded as artifact)
   #   v0.4.0  bioprint-guard   (OPC UA server -> gateway -> Neo4j assertion)
