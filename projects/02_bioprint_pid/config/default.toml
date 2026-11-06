@@ -1,0 +1,96 @@
+# =============================================================================
+# BioPrint-PID model configuration
+# =============================================================================
+# Every value here is an ILLUSTRATIVE default for a simulated nozzle zone
+# extruding glass-fibre-reinforced recycled PETG (rPETG-GF). None of them is
+# measured data from a specific machine or material.
+#
+# Reviewers: copy any section into your own file, change only what you know
+# better, then run
+#
+#     python src/app.py --config path/to/your_values.toml
+#
+# Your file is merged over this one, so leave out anything you don't want to
+# change. Each [A-xx] tag refers to an entry in docs/model-assumptions.md,
+# which records the basis and confidence of every value.
+# =============================================================================
+
+[scenario]
+dt = 0.1                     # s     controller scan time (PRD FR-1)
+steps = 300                  # -     30 s run
+setpoint = 230.0             # °C    melt setpoint
+disturbance_step = 150       # -     when the ambient disturbance starts
+disturbed_ambient_temp = 5.0 # °C    [A-20] roller door open: cold yard air
+disturbed_loss_coeff = 30.0  # W/K   [A-20] convective loss with door open (from 8 W/K)
+seed = 42                    # -     sensor-noise random seed
+
+[controller]                 # [A-27] tuned against THIS model by grid sweep
+kp = 8.0                     # %/°C
+ki = 2.5                     # %/(°C·s)
+kd = 2.0                     # %·s/°C
+derivative_filter_n = 10.0   # -     derivative filter: Tf = kd / (kp · N)
+out_min = 0.0                # %     heater duty limits
+out_max = 100.0              # %
+
+[controller_untuned]         # deliberately naive configuration for the comparison chart
+kp = 2.0
+ki = 0.6
+kd = 0.0
+
+[thermal]                    # lumped barrel / nozzle zone
+heat_capacity = 400.0        # J/K   [A-01] effective thermal mass of the zone
+heater_power_max = 15000.0   # W     [A-02] installed band-heater power
+loss_coeff = 8.0             # W/K   [A-03] convective + radiative loss to ambient
+ambient_temp = 25.0          # °C    [A-04] factory air; also the cold-start temperature
+feed_temp = 25.0             # °C    [A-05] pellet temperature entering the zone
+specific_heat = 1500.0       # J/(kg·K) [A-06] polymer c_p used for the feed load
+nominal_mass_flow = 0.005    # kg/s  [A-07] 18 kg/h at full gantry speed
+
+[rheology]                   # power-law melt, ΔP ∝ K(T, composition) · Qⁿ
+flow_index = 0.4             # -     [A-08] n < 1 is shear-thinning
+activation_energy = 50000.0  # J/mol [A-09] Arrhenius flow activation energy
+reference_temp = 230.0       # °C    [A-10] calibration point ...
+reference_pressure = 45.0    # bar   [A-10] ... 45 bar at 230 °C, nominal flow, reference batch
+max_pressure = 250.0         # bar   [A-11] relief-valve clamp
+
+[material]                   # composition effects on melt consistency K
+fibre_wt_pct = 15.0          # wt %  [A-12] glass fibre loading of the batch being printed
+reference_fibre_wt_pct = 15.0 # wt % [A-12] loading of the batch the 45 bar point was calibrated on
+fibre_density = 2540.0       # kg/m³ [A-13] E-glass
+matrix_density = 1270.0      # kg/m³ [A-13] PETG
+fibre_intrinsic_viscosity = 5.0 # -  [A-14] Krieger-Dougherty [η] for short fibres
+max_packing_fraction = 0.35  # -     [A-14] Krieger-Dougherty φ_m for short fibres
+recycle_generation = 1       # -     [A-15] reprocessing passes of the batch being printed
+reference_recycle_generation = 1 # - [A-15] passes of the calibration batch
+mw_retention_per_cycle = 0.95 # -    [A-15] fraction of Mw kept per reprocessing pass
+mw_exponent = 3.4            # -     [A-16] η₀ ∝ Mwᵃ for entangled melts
+
+[gantry]                     # [A-17] toolpath: straight runs with periodic corners
+corner_every_s = 4.0         # s
+corner_duration_s = 0.8      # s
+corner_speed = 0.4           # -     fraction of nominal speed in a corner
+
+[sensor]                     # [A-18] thermocouple seen by both PID and QC
+noise_sd = 0.15              # °C
+lag_s = 0.5                  # s     first-order time constant
+
+[interlock]
+band = 2.0                   # °C    [A-19] auger enabled once T ≥ setpoint − band
+
+[qc]                         # [A-21] Westgard monitor
+baseline_start = 80          # step  first baseline sample (8 s, after settling)
+baseline_length = 40         # -     samples used to fix the SD
+rolling_window = 20          # -     samples for rolling mean / SD / CV%
+min_sd = 0.05                # °C    floor on the baseline SD
+
+[layer]                      # deposited-bead cooling and inter-layer adhesion window
+bead_width_mm = 20.0         # mm    [A-22] LFAM-scale bead
+bead_height_mm = 5.0         # mm    [A-22]
+bead_density = 1400.0        # kg/m³ [A-23] rPETG + 15 wt % GF
+bead_specific_heat = 1800.0  # J/(kg·K) [A-23] melt-range c_p
+bead_conductivity = 0.30     # W/(m·K) [A-23] used only for the Biot-number validity check
+convective_h = 10.0          # W/(m²·K) [A-24] still air; ~25 with fans
+glass_transition = 80.0      # °C    [A-25] PETG Tg
+bond_min_temp = 90.0         # °C    [A-26] substrate must stay above this for interlayer diffusion
+support_max_temp = 120.0     # °C    [A-26] substrate must cool below this to carry the next layer
+ambient_sweep = [0.0, 40.0]  # °C    range plotted on the layer-time chart
