@@ -18,7 +18,7 @@ Before working with industrial data and knowledge graphs, I spent more than a de
 
 | | Project | What it shows | Status |
 |---|---|---|---|
-| 🏗️ | [**GraphPrint-Twin**](./projects/01_graphprint_twin) | Simulated PLC telemetry streamed into a Neo4j semantic digital twin, with one-query forensic traceback from a defect to its material batch. This project also owns the suite's [shared graph schema](./docs/graph-schema.md). | Planned for v0.2.0 |
+| 🏗️ | [**GraphPrint-Twin**](./projects/01_graphprint_twin) | Simulated PLC telemetry streamed into a Neo4j semantic digital twin, with one-query forensic traceback from a defect to its material batch. This project also owns the suite's [shared graph schema](./docs/graph-schema.md). | ✅ v0.2.0 |
 | 🧪 | [**BioPrint-PID**](./projects/02_bioprint_pid) | A discrete PID controller with anti-windup regulating a polymer extruder (thermal mass plus a shear-thinning melt model), monitored by clinical Westgard rules (1-2s, 1-3s, 2-2s). | Planned for v0.3.0 |
 | 🛡️ | [**BioPrint-Guard**](./projects/03_bioprint_guard) | An async OPC UA server streaming motor current, vibration and temperature at 10 Hz. A gateway scores wear from 0 to 1 and raises maintenance alerts in the same Neo4j twin. | Planned for v0.4.0 |
 
@@ -56,7 +56,15 @@ cd BioPrint-Automation-Suite
 docker compose up -d neo4j
 ```
 
-Each sub-project has its own `requirements.txt` and README with run instructions. These arrive as each release ships.
+Then run a sub-project, for example GraphPrint-Twin:
+
+```bash
+cd projects/01_graphprint_twin
+pip install -r requirements-dev.txt
+python src/main.py
+```
+
+Each sub-project's README has its own run instructions.
 
 ## Verification
 
@@ -76,7 +84,7 @@ The same checks are also defined as a GitHub Actions workflow ([`integration-tes
 | Release | Milestone |
 |---|---|
 | **v0.1.0** | Monorepo scaffold, docs, verification foundation |
-| v0.2.0 | GraphPrint-Twin |
+| **v0.2.0** | GraphPrint-Twin |
 | v0.3.0 | BioPrint-PID |
 | v0.4.0 | BioPrint-Guard |
 | v0.5.0 | Cross-project integration tests in one workflow |
