@@ -40,6 +40,7 @@ flowchart TB
 |---|---|
 | **One monorepo, three projects** | Reviewers see the whole OT → IT pipeline in one place, while each project still runs on its own. |
 | **One shared graph** | Twin and Guard write into the same Neo4j schema ([graph-schema.md](graph-schema.md)), so telemetry and maintenance alerts connect through the printer. |
+| **Layer-bucketed telemetry** | The graph stores one `LayerTelemetry` node per printed layer (stats, anomaly offsets, raw values only when anomalous), not one node per 10 Hz sample: ~120 nodes per printer per day instead of ~864,000. Long raw history belongs in a time-series store, with the graph as the index. |
 | **Parameterised, idempotent Cypher** | No string-built queries. Topology uses `MERGE`, so start-up is safe to repeat, and alerts are deduplicated per component. |
 | **Clinical QC on an industrial loop** | Westgard rules catch drift and systematic error from the pattern of results, not only from a single value breaking a limit. Control limits are fixed from a stable baseline window, the way a lab sets limits from its control material. |
 | **Deterministic simulations** | Fixed random seeds and simulated time by default, so CI can assert on outcomes. A `--realtime` flag exists for live demos. |

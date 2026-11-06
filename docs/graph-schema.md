@@ -19,8 +19,9 @@ graph LR
     WC -- CONTAINS --> P(["RoboticPrinter"])
     PLC(["PLC_Controller"]) -- CONTROLS --> P
     P -- HAS_COMPONENT --> C(["Component"])
-    P -- GENERATED --> T(["TelemetryLog"])
+    P -- GENERATED --> T(["LayerTelemetry"])
     T -- MONITORS --> W(["WallSegment"])
+    T -- NEXT_LAYER --> T
     W -- USES_MATERIAL --> M(["MaterialBatch"])
     C -- REQUIRES_INSPECTION --> A(["MaintenanceAlert"])
 ```
@@ -37,10 +38,10 @@ graph LR
 | `Component` | `id`, `name`, `axis`, `isa88_level`, `aas_id` | ISA-88 Control Module; AAS asset | Twin (topology); Guard bootstraps if missing |
 | `WallSegment` | `id`, `required_layers`, `ifc_guid`, `ifc_class`, `design_ref` | IFC `IfcWall` (by GlobalId) | Twin (topology) |
 | `MaterialBatch` | `id`, `vendor`, `polymer`, `fibre_wt_pct`, `recycle_generation`, `moisture_ppm`, `isa95_class`, `material_definition` | ISA-95 Material Lot | Twin (topology) |
-| `TelemetryLog` | `id`, `timestamp`, `nozzle_temp`, `pump_pressure`, `status` | Time-series sample; AAS TimeSeries record | Twin (ingestion) |
+| `LayerTelemetry` | `id`, `layer_index`, `start_time`, `end_time`, `sample_period_s`, `n_samples`, `temp_mean/min/max/sd/cv_pct`, `pressure_mean/min/max/sd`, `anomaly_count`, `anomaly_offsets`, `status`, `raw_stored`, `raw_temps`, `raw_pressures` | Time-series bucket for one printed layer; AAS TimeSeries segment; ISA-95 segment response | Twin (ingestion) |
 | `MaintenanceAlert` | `id`, `status`, `severity`, `peak_risk_score`, `created_at`, `updated_at` | Maintenance request | Guard |
 
-`TelemetryLog.status` is either `OPTIMAL` or `ANOMALY_WARNING`.
+`LayerTelemetry.status` is `ANOMALY_WARNING` if any sample in the layer left the 235 °C / 48 bar envelope, otherwise `OPTIMAL`.
 `MaintenanceAlert.status` is `OPEN` or `CLOSED`; `severity` is `HIGH` (score 0.85–0.94) or `CRITICAL` (≥ 0.95).
 
 ## Relationships
@@ -50,10 +51,28 @@ graph LR
 | `(:Site)-[:CONTAINS]->(:Area)-[:CONTAINS]->(:WorkCenter)-[:CONTAINS]->(:RoboticPrinter)` | ISA-95 role-based equipment hierarchy |
 | `(:PLC_Controller)-[:CONTROLS]->(:RoboticPrinter)` | Which controller drives which printer |
 | `(:RoboticPrinter)-[:HAS_COMPONENT]->(:Component)` | Physical parts of a printer |
-| `(:RoboticPrinter)-[:GENERATED]->(:TelemetryLog)` | Which printer produced a reading |
-| `(:TelemetryLog)-[:MONITORS]->(:WallSegment)` | What was being printed when the reading was taken |
+| `(:RoboticPrinter)-[:GENERATED]->(:LayerTelemetry)` | Which printer produced the layer's telemetry |
+| `(:LayerTelemetry)-[:MONITORS]->(:WallSegment)` | Which wall the layer belongs to |
+| `(:LayerTelemetry)-[:NEXT_LAYER]->(:LayerTelemetry)` | Ordered chain of layers within a wall (a time chain you can walk) |
 | `(:WallSegment)-[:USES_MATERIAL]->(:MaterialBatch)` | Material traceability |
 | `(:Component)-[:REQUIRES_INSPECTION]->(:MaintenanceAlert)` | Open or historical maintenance alerts on a part |
+
+## Telemetry storage: one bucket per printed layer
+
+GraphPrint-Twin samples the PLC at 10 Hz, but it does **not** store one node per sample. One printer at 10 Hz produces 864,000 samples a day. As nodes, that is 864,000 nodes and 1.7 million relationships, which bloats the store and slows every traversal. The graph's strength is context, so telemetry is bucketed by the natural unit of 3D printing, **the layer**:
+
+| | Per-sample nodes | Layer buckets (this design) |
+|---|---|---|
+| Nodes per printer per day (10 Hz, ~12 min layers) | ~864,000 | **~120** |
+| Write transactions | one per sample | **one per layer** |
+| Raw samples | always | **only for anomalous layers** (configurable `raw_policy`) |
+| Timestamps | stored on every node | **implicit**: `start_time + offset × sample_period_s` |
+
+Every layer bucket always carries summary statistics, the count and offsets of out-of-envelope samples, and its status. Raw value arrays are kept only where they're needed for forensic review (`raw_policy = "anomaly"`, the default; `"all"` and `"none"` are also available). A retention job drops raw arrays after N days but keeps every summary.
+
+**Writes are idempotent.** Layer ids are deterministic (`Printer_01/Studio_Unit_BackWall/L0042`). The ingest `MERGE`s the bucket and every relationship, so a retried or replayed write updates the layer instead of duplicating nodes or edges.
+
+**Production path.** For long raw history, the samples belong in a time-series database or plant historian (TimescaleDB, InfluxDB, PI). The graph would keep these summaries and anomaly events plus a pointer (`raw_uri`) to the exact time range. The schema leaves room for that property; this demo keeps everything in Neo4j so it runs with a single container.
 
 ## Constraints
 
@@ -68,7 +87,7 @@ CREATE CONSTRAINT printer_id    IF NOT EXISTS FOR (n:RoboticPrinter)   REQUIRE n
 CREATE CONSTRAINT component_id  IF NOT EXISTS FOR (n:Component)        REQUIRE n.id IS UNIQUE;
 CREATE CONSTRAINT wall_id       IF NOT EXISTS FOR (n:WallSegment)      REQUIRE n.id IS UNIQUE;
 CREATE CONSTRAINT batch_id      IF NOT EXISTS FOR (n:MaterialBatch)    REQUIRE n.id IS UNIQUE;
-CREATE CONSTRAINT log_id        IF NOT EXISTS FOR (n:TelemetryLog)     REQUIRE n.id IS UNIQUE;
+CREATE CONSTRAINT layer_id      IF NOT EXISTS FOR (n:LayerTelemetry)   REQUIRE n.id IS UNIQUE;
 CREATE CONSTRAINT alert_id      IF NOT EXISTS FOR (n:MaintenanceAlert) REQUIRE n.id IS UNIQUE;
 ```
 
@@ -89,26 +108,47 @@ All topology writes use `MERGE`, so they are safe to run any number of times. Th
 
 ## Key queries
 
-**Forensic traceback**: every anomalous reading, with the wall (and its IFC id) and the material it was printed from:
+**Forensic traceback**: every anomalous layer, with which samples went out of spec, the wall (and its IFC id) and the material it was printed from:
 
 ```cypher
-MATCH (p:RoboticPrinter)-[:GENERATED]->(t:TelemetryLog {status: "ANOMALY_WARNING"})
+MATCH (p:RoboticPrinter)-[:GENERATED]->(b:LayerTelemetry {status: "ANOMALY_WARNING"})
       -[:MONITORS]->(w:WallSegment)-[:USES_MATERIAL]->(m:MaterialBatch)
-RETURN t.timestamp AS timestamp, t.nozzle_temp AS nozzle_temp, t.pump_pressure AS pump_pressure,
+RETURN b.id AS layer_id, b.layer_index AS layer, toString(b.start_time) AS start_time,
+       b.anomaly_count AS anomaly_samples, b.anomaly_offsets AS anomaly_offsets,
+       b.temp_max AS temp_max, b.pressure_max AS pressure_max, b.raw_stored AS raw_stored,
        p.id AS printer, w.id AS wall_segment, w.ifc_guid AS wall_ifc_guid,
        m.id AS batch, m.vendor AS vendor, m.fibre_wt_pct AS fibre_wt_pct,
        m.recycle_generation AS recycle_generation
-ORDER BY t.timestamp;
+ORDER BY w.id, b.layer_index;
+```
+
+**Exact time of each out-of-spec sample**, from implicit timestamps:
+
+```cypher
+MATCH (b:LayerTelemetry {id: $layer_id})
+UNWIND b.anomaly_offsets AS i
+RETURN b.start_time + duration({milliseconds: toInteger(i * b.sample_period_s * 1000)}) AS at,
+       CASE WHEN b.raw_stored THEN b.raw_temps[i] END AS temp,
+       CASE WHEN b.raw_stored THEN b.raw_pressures[i] END AS pressure;
+```
+
+**Walk a wall layer by layer** (the time chain): find layers whose temperature spread drifted up compared with the layer before, a clinical-QC style trend check:
+
+```cypher
+MATCH (prev:LayerTelemetry)-[:NEXT_LAYER]->(b:LayerTelemetry)-[:MONITORS]->(w:WallSegment {id: $wall_id})
+WHERE b.temp_sd > 1.5 * prev.temp_sd
+RETURN b.layer_index AS layer, prev.temp_sd AS sd_before, b.temp_sd AS sd_now
+ORDER BY layer;
 ```
 
 **Materials question**: anomaly rate by recycle generation, to see whether reprocessed batches misbehave:
 
 ```cypher
-MATCH (t:TelemetryLog)-[:MONITORS]->(:WallSegment)-[:USES_MATERIAL]->(m:MaterialBatch)
+MATCH (b:LayerTelemetry)-[:MONITORS]->(:WallSegment)-[:USES_MATERIAL]->(m:MaterialBatch)
 RETURN m.recycle_generation AS generation,
-       count(t) AS readings,
-       round(100.0 * sum(CASE t.status WHEN "ANOMALY_WARNING" THEN 1 ELSE 0 END) / count(t), 1)
-         AS anomaly_pct
+       count(b) AS layers,
+       sum(b.n_samples) AS samples,
+       round(100.0 * sum(b.anomaly_count) / sum(b.n_samples), 3) AS anomaly_pct
 ORDER BY generation;
 ```
 
@@ -116,8 +156,8 @@ ORDER BY generation;
 
 ```cypher
 MATCH (p:RoboticPrinter)-[:HAS_COMPONENT]->(c:Component)-[:REQUIRES_INSPECTION]->(a:MaintenanceAlert {status: "OPEN"})
-MATCH (p)-[:GENERATED]->(t:TelemetryLog)-[:MONITORS]->(w:WallSegment)
-WHERE t.timestamp >= a.created_at
+MATCH (p)-[:GENERATED]->(b:LayerTelemetry)-[:MONITORS]->(w:WallSegment)
+WHERE b.end_time >= a.created_at
 RETURN c.id AS component, a.severity AS severity,
        collect(DISTINCT {wall: w.id, ifc_guid: w.ifc_guid}) AS walls_at_risk;
 ```
@@ -125,9 +165,9 @@ RETURN c.id AS component, a.severity AS severity,
 **ISA-95 roll-up**: telemetry health by production line:
 
 ```cypher
-MATCH (wc:WorkCenter)-[:CONTAINS]->(p:RoboticPrinter)-[:GENERATED]->(t:TelemetryLog)
-RETURN wc.name AS line, p.id AS printer, count(t) AS readings,
-       sum(CASE t.status WHEN "ANOMALY_WARNING" THEN 1 ELSE 0 END) AS anomalies;
+MATCH (wc:WorkCenter)-[:CONTAINS]->(p:RoboticPrinter)-[:GENERATED]->(b:LayerTelemetry)
+RETURN wc.name AS line, p.id AS printer, count(b) AS layers, sum(b.n_samples) AS samples,
+       sum(CASE b.status WHEN "ANOMALY_WARNING" THEN 1 ELSE 0 END) AS anomalous_layers;
 ```
 
 **Raise or update a maintenance alert (Guard)**: idempotent, with at most one open alert per component:

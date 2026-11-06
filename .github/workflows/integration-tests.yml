@@ -65,11 +65,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Unit tests (FR-1, FR-3)
-        run: NEO4J_URI= python -m pytest tests/test_plc_simulator.py tests/test_database.py
+      - name: Unit tests (FR-1, FR-3, layer bucketing, IFC)
+        run: NEO4J_URI= python -m pytest
 
-      - name: Telemetry pipeline, 10 cycles (FR-1 to FR-4)
-        run: python src/main.py --cycles 10 --interval 1.0
+      - name: Telemetry pipeline, 10 layers x 600 samples at 10 Hz (FR-1 to FR-4)
+        run: python src/main.py --layers 10 --samples-per-layer 600 --interval 1.0
 
       - name: Graph integration tests (FR-2 to FR-4)
         run: python -m pytest tests/test_integration.py

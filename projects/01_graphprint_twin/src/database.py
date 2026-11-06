@@ -11,6 +11,9 @@ statement the twin runs. Three rules apply throughout:
 * **Idempotent topology.** Constraints use ``IF NOT EXISTS`` and topology uses
   ``MERGE``, so start-up can run any number of times without duplicates.
 
+Telemetry is stored as one ``LayerTelemetry`` bucket per printed layer, not
+one node per sample (see ``layer_aggregator.py`` for why).
+
 The schema is documented in ``docs/graph-schema.md`` at the repo root.
 """
 
@@ -23,9 +26,9 @@ from collections.abc import Iterable
 from typing import Any
 
 from ifc import global_id_for
+from layer_aggregator import LayerTelemetry
 from neo4j import Driver, GraphDatabase, ManagedTransaction
 from neo4j.exceptions import ServiceUnavailable
-from plc_simulator import TelemetryReading
 
 log = logging.getLogger(__name__)
 
@@ -56,7 +59,7 @@ CONSTRAINTS: tuple[str, ...] = (
     "CREATE CONSTRAINT component_id IF NOT EXISTS FOR (n:Component) REQUIRE n.id IS UNIQUE",
     "CREATE CONSTRAINT wall_id IF NOT EXISTS FOR (n:WallSegment) REQUIRE n.id IS UNIQUE",
     "CREATE CONSTRAINT batch_id IF NOT EXISTS FOR (n:MaterialBatch) REQUIRE n.id IS UNIQUE",
-    "CREATE CONSTRAINT log_id IF NOT EXISTS FOR (n:TelemetryLog) REQUIRE n.id IS UNIQUE",
+    "CREATE CONSTRAINT layer_id IF NOT EXISTS FOR (n:LayerTelemetry) REQUIRE n.id IS UNIQUE",
     "CREATE CONSTRAINT alert_id IF NOT EXISTS FOR (n:MaintenanceAlert) REQUIRE n.id IS UNIQUE",
 )
 
@@ -121,30 +124,36 @@ TOPOLOGY_PARAMS: dict[str, Any] = {
     "batch_definition": "rPETG-GF15",
 }
 
-# MATCH first, then CREATE: a reading is only written if its printer and wall
-# exist, so no TelemetryLog can float unattached (FR-2).
-INGEST_QUERY = """
+# One idempotent transaction per printed layer:
+#   * MATCH printer and wall first, so a bucket can never float unattached (FR-2)
+#   * MERGE the bucket on its deterministic id and overwrite its properties, so a
+#     retried or replayed write updates the layer instead of duplicating it
+#   * MERGE (not CREATE) every relationship, for the same reason
+#   * link the previous layer with NEXT_LAYER, giving an ordered time chain per wall
+LAYER_INGEST_QUERY = """
 MATCH (p:RoboticPrinter {id: $printer_id})
 MATCH (w:WallSegment {id: $wall_id})
-CREATE (t:TelemetryLog {
-    id: $log_id,
-    timestamp: $timestamp,
-    nozzle_temp: $nozzle_temp,
-    pump_pressure: $pump_pressure,
-    status: $status
-})
-CREATE (p)-[:GENERATED]->(t)
-CREATE (t)-[:MONITORS]->(w)
-RETURN t.id AS id
+MERGE (b:LayerTelemetry {id: $layer_id})
+SET b += $props
+MERGE (p)-[:GENERATED]->(b)
+MERGE (b)-[:MONITORS]->(w)
+WITH b
+OPTIONAL MATCH (prev:LayerTelemetry {id: $prev_layer_id})
+FOREACH (_ IN CASE WHEN prev IS NULL THEN [] ELSE [1] END | MERGE (prev)-[:NEXT_LAYER]->(b))
+RETURN b.id AS id
 """
 
 TRACEBACK_QUERY = """
-MATCH (p:RoboticPrinter)-[:GENERATED]->(t:TelemetryLog {status: "ANOMALY_WARNING"})
+MATCH (p:RoboticPrinter)-[:GENERATED]->(b:LayerTelemetry {status: "ANOMALY_WARNING"})
       -[:MONITORS]->(w:WallSegment)-[:USES_MATERIAL]->(m:MaterialBatch)
-RETURN t.id AS log_id,
-       toString(t.timestamp) AS timestamp,
-       t.nozzle_temp AS nozzle_temp,
-       t.pump_pressure AS pump_pressure,
+RETURN b.id AS layer_id,
+       b.layer_index AS layer_index,
+       toString(b.start_time) AS start_time,
+       b.anomaly_count AS anomaly_samples,
+       b.anomaly_offsets AS anomaly_offsets,
+       b.temp_max AS temp_max,
+       b.pressure_max AS pressure_max,
+       b.raw_stored AS raw_stored,
        p.id AS printer,
        w.id AS wall_segment,
        w.ifc_guid AS wall_ifc_guid,
@@ -152,21 +161,28 @@ RETURN t.id AS log_id,
        m.vendor AS vendor,
        m.fibre_wt_pct AS fibre_wt_pct,
        m.recycle_generation AS recycle_generation
-ORDER BY t.timestamp
+ORDER BY w.id, b.layer_index
 """
 
-# Counts used to verify a run: logs written by this run and how many are fully linked.
+# Verify a run: every bucket exists, is linked to printer and wall, and the chain is intact.
 RUN_INTEGRITY_QUERY = """
-UNWIND $log_ids AS log_id
-OPTIONAL MATCH (t:TelemetryLog {id: log_id})
-OPTIONAL MATCH linked = (:RoboticPrinter)-[:GENERATED]->(t)-[:MONITORS]->(:WallSegment)
-RETURN count(DISTINCT t) AS found, count(DISTINCT linked) AS linked
+UNWIND $layer_ids AS lid
+OPTIONAL MATCH (b:LayerTelemetry {id: lid})
+OPTIONAL MATCH (p:RoboticPrinter)-[:GENERATED]->(b)-[:MONITORS]->(:WallSegment)
+OPTIONAL MATCH (b)-[:NEXT_LAYER]->(nx:LayerTelemetry)
+WITH lid, b, count(DISTINCT p) > 0 AS is_linked, count(DISTINCT nx) > 0 AS is_chained
+RETURN count(b) AS found,
+       sum(CASE WHEN is_linked THEN 1 ELSE 0 END) AS linked,
+       sum(CASE WHEN is_chained THEN 1 ELSE 0 END) AS chained,
+       sum(b.n_samples) AS samples
 """
 
-PRUNE_QUERY = """
-MATCH (t:TelemetryLog {status: "OPTIMAL"})
-WHERE t.timestamp < datetime() - duration({days: $days})
-CALL { WITH t DETACH DELETE t } IN TRANSACTIONS OF 1000 ROWS
+# Retention (NFR 5.1): keep every summary, drop raw arrays after N days.
+PRUNE_RAW_QUERY = """
+MATCH (b:LayerTelemetry)
+WHERE b.raw_stored = true AND b.end_time < datetime() - duration({days: $days})
+SET b.raw_temps = null, b.raw_pressures = null, b.raw_stored = false
+RETURN count(b) AS pruned
 """
 
 
@@ -272,54 +288,67 @@ class DigitalTwinBridge:
     # -- ingestion (FR-3) ------------------------------------------------------
 
     @staticmethod
-    def _ingest(tx: ManagedTransaction, params: dict[str, Any]) -> str | None:
-        record = tx.run(INGEST_QUERY, params).single()
+    def _ingest_layer(tx: ManagedTransaction, params: dict[str, Any]) -> str | None:
+        record = tx.run(LAYER_INGEST_QUERY, params).single()
         return record["id"] if record else None
 
-    def ingest_telemetry(self, printer_id: str, wall_id: str, reading: TelemetryReading) -> str:
-        """Write one reading and link it to its printer and wall segment.
+    def ingest_layer(self, layer: LayerTelemetry) -> str:
+        """Write (or update) one layer bucket and link it to printer, wall and previous layer.
 
         Returns:
-            The id of the created ``TelemetryLog`` node.
+            The id of the ``LayerTelemetry`` node.
 
         Raises:
             TopologyMissingError: If the printer or wall segment doesn't exist.
         """
-        params = {"printer_id": printer_id, "wall_id": wall_id, **reading.to_params()}
+        params = {
+            "printer_id": layer.printer_id,
+            "wall_id": layer.wall_id,
+            "layer_id": layer.id,
+            "prev_layer_id": layer.previous_id,
+            "props": layer.to_properties(),
+        }
         with self._driver.session(database=self._database) as session:
-            log_id = session.execute_write(self._ingest, params)
-        if log_id is None:
+            node_id = session.execute_write(self._ingest_layer, params)
+        if node_id is None:
             raise TopologyMissingError(
-                f"No RoboticPrinter '{printer_id}' or WallSegment '{wall_id}' in the graph; "
-                "run initialize_factory_topology() first"
+                f"No RoboticPrinter '{layer.printer_id}' or WallSegment '{layer.wall_id}' in "
+                "the graph; run initialize_factory_topology() first"
             )
-        return log_id
+        return node_id
 
     # -- analysis (FR-4) -------------------------------------------------------
 
     def trace_anomalies(self) -> list[dict[str, Any]]:
-        """Forensic traceback: every ANOMALY_WARNING reading with its wall, batch and vendor."""
+        """Forensic traceback: every anomalous layer with its wall, IFC id, batch and vendor."""
         with self._driver.session(database=self._database) as session:
             return session.execute_read(lambda tx: [r.data() for r in tx.run(TRACEBACK_QUERY)])
 
-    def verify_run(self, log_ids: Iterable[str]) -> dict[str, int]:
-        """Check that every reading from a run exists and is linked to printer and wall."""
-        ids = list(log_ids)
+    def verify_run(self, layer_ids: Iterable[str]) -> dict[str, int]:
+        """Check that every layer bucket of a run exists, is linked, and is chained in order."""
+        ids = list(layer_ids)
         with self._driver.session(database=self._database) as session:
             record = session.execute_read(
-                lambda tx: tx.run(RUN_INTEGRITY_QUERY, {"log_ids": ids}).single()
+                lambda tx: tx.run(RUN_INTEGRITY_QUERY, {"layer_ids": ids}).single()
             )
-        found = record["found"] if record else 0
-        linked = record["linked"] if record else 0
-        return {"expected": len(ids), "found": found, "linked": linked}
+        return {
+            "expected": len(ids),
+            "found": record["found"] if record else 0,
+            "linked": record["linked"] if record else 0,
+            "chained": record["chained"] if record else 0,
+            "samples": (record["samples"] or 0) if record else 0,
+        }
 
     # -- housekeeping (NFR 5.1) ------------------------------------------------
 
-    def prune_optimal_logs(self, days: int = 30) -> None:
-        """Delete OPTIMAL readings older than ``days``. Anomalies are always kept."""
+    def prune_raw_arrays(self, days: int = 30) -> int:
+        """Drop raw sample arrays older than ``days``. Summaries and anomaly offsets are kept."""
         if days < 1:
             raise ValueError("days must be >= 1")
         with self._driver.session(database=self._database) as session:
-            # CALL ... IN TRANSACTIONS must run in an auto-commit (implicit) transaction.
-            session.run(PRUNE_QUERY, {"days": days}).consume()
-        log.info("Pruned OPTIMAL telemetry older than %d days", days)
+            record = session.execute_write(
+                lambda tx: tx.run(PRUNE_RAW_QUERY, {"days": days}).single()
+            )
+        pruned = record["pruned"] if record else 0
+        log.info("Pruned raw arrays from %d layer buckets older than %d days", pruned, days)
+        return pruned

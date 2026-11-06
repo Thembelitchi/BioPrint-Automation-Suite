@@ -105,7 +105,7 @@ python src/app.py --config my_values.toml --report-only
 *IT/OT bridge specialists: OPC UA information models, ISA-95, Asset Administration Shell.*
 
 **What's built**
-- Simulated PLC registers contextualised into a semantic graph at ingest. Every reading is attached to its printer and wall, never stored loose (GraphPrint-Twin).
+- Simulated 10 Hz PLC registers contextualised into a semantic graph at ingest, **bucketed per printed layer** so the graph stores context and summaries rather than raw series. Every bucket is attached to its printer and wall and chained to the previous layer (GraphPrint-Twin).
 - **ISA-95** equipment hierarchy (`Site → Area → WorkCenter → WorkUnit`), an ISA-88 control module, and `MaterialBatch` as an ISA-95 Material Lot
 - **AAS** identifiers (`aas_id`) on printers and components, with an IDTA submodel mapping
 - Swappable `TelemetrySource` interface, so Modbus, OPC UA or Kafka can replace the simulator
@@ -115,7 +115,7 @@ python src/app.py --config my_values.toml --report-only
 
 **Questions I'd most like answered**
 1. Is the printer correctly a **Work Unit**, or would you model the printer as a Work Center with heads as units?
-2. GraphPrint-Twin writes **one node per telemetry sample**. That's clear for a demo, but at 10 Hz × many robots it won't scale. Would you keep raw samples in a time-series store (InfluxDB, TimescaleDB, a historian) and put only aggregates and events in the graph? I lean that way, and NFR 5.1 already prunes old OPTIMAL samples.
+2. Telemetry is stored as **one `LayerTelemetry` bucket per printed layer** (stats always, raw arrays only for anomalous layers, implicit timestamps), not one node per sample: about 120 nodes per printer per day instead of ~864,000. Is the layer the right bucket, or would you use fixed time windows? At what scale would you move raw samples to a time-series store or historian and keep only a `raw_uri` pointer in the graph?
 3. Which AAS submodels would you implement first, and would you stand up Eclipse BaSyx alongside Neo4j or generate AASX from the graph?
 4. Should BioPrint-Guard's OPC UA model adopt **OPC 40001-1 Machinery** and **OPC 40010 Robotics** now, before more code depends on the custom namespace?
 5. Would you put a **unified namespace** (MQTT + Sparkplug B) between OPC UA and the graph?

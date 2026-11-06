@@ -34,7 +34,7 @@ graph TB
 | Equipment / control modules | `:Component {isa88_level: "ControlModule"}` | ISA-88 terminology below the work unit |
 | Material Definition | `MaterialBatch.material_definition` (e.g. `rPETG-GF15`) | Currently a property; could become its own `:MaterialDefinition` node |
 | Material Lot | `:MaterialBatch {isa95_class: "MaterialLot"}` | Carries lot properties such as fibre loading, recycle generation and moisture |
-| Production performance / segment response | `TelemetryLog` linked to `WallSegment` | Simplified: no explicit job order or segment response objects yet |
+| Production performance / segment response | `LayerTelemetry` (one per printed layer) linked to `WallSegment` | A layer bucket is effectively a segment response with process data; no explicit job order objects yet |
 
 **Gaps a reviewer should know about:** there are no Personnel, Physical Asset (as distinct from Equipment) or Process Segment models, and no B2MML import/export. A natural next step is a `:JobOrder` node between `WorkCenter` and `WallSegment`.
 
@@ -46,7 +46,7 @@ The AAS is the Industrie 4.0 digital representation of an asset: a shell with a 
 |---|---|
 | Digital Nameplate | `RoboticPrinter.type`, `Component.name` / `axis` (minimal) |
 | Technical Data | BioPrint-PID `config/default.toml` (heater power, thermal mass, rheology) |
-| Time Series Data | `TelemetryLog` nodes (`GENERATED` by the asset) |
+| Time Series Data | `LayerTelemetry` buckets: one segment per layer with summary statistics, raw values only for anomalous layers, implicit timestamps |
 | Maintenance / condition monitoring | `MaintenanceAlert` via `REQUIRES_INSPECTION` (BioPrint-Guard) |
 | Bill of Material (hierarchical structures) | `HAS_COMPONENT`, `CONTAINS` |
 
