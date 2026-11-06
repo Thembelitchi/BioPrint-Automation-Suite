@@ -22,6 +22,7 @@ cd BioPrint-Automation-Suite/projects/02_bioprint_pid
 pip install -r requirements-dev.txt
 python src/app.py          # about 1 s; charts and data in output/
 python -m pytest           # 70 tests
+# or, from the repo root, everything at once:  scripts/verify.sh --install
 ```
 
 GraphPrint-Twin also needs Neo4j: `docker compose up -d neo4j` from the repo root, then `cd projects/01_graphprint_twin && pip install -r requirements-dev.txt && python src/main.py`.
@@ -129,7 +130,7 @@ python src/app.py --config my_values.toml --report-only
 **What's built**
 - `DiscretePID` in Python: derivative on measurement, filtered D, clamped output, **conditional-integration anti-windup**
 - A Westgard multirule monitor (the clinical-lab QC idea) on the barrel temperature
-- **IEC 61131-3 Structured Text ports** of both blocks (`projects/02_bioprint_pid/plc/`), with 300 scans of reference vectors, TcUnit test suites, and a CI check that executes the ST logic and matches Python to 1e-9 ([PLC README](../projects/02_bioprint_pid/plc/README.md))
+- **IEC 61131-3 Structured Text ports** of both blocks (`projects/02_bioprint_pid/plc/`), with 300 scans of reference vectors, TcUnit test suites, and a test that executes the ST logic and matches Python to 1e-9 ([PLC README](../projects/02_bioprint_pid/plc/README.md))
 - A 50-seed robustness test on the closed loop, and an untuned-vs-tuned comparison showing windup to about 347 °C
 
 **15-minute exercise.** Paste `plc/src/*.st` and `plc/tests/*.st` into a TwinCAT 3 or CODESYS project with TcUnit and run the suites. **This is the single most useful thing a controls engineer could do for the repo**, because the ST has been logic-verified but not compiled on a real toolchain.
@@ -164,7 +165,7 @@ python src/app.py --config my_values.toml --report-only
 ## How to give feedback
 
 - **Issue form:** [Expert review](https://github.com/Thembelitchi/BioPrint-Automation-Suite/issues/new?template=expert_review.yml). Choose your area, cite the assumption ID if there is one, and give your value and its basis.
-- **Pull request:** a TOML override in `config/examples/` with a comment explaining the source is the easiest contribution to merge, and CI will run it automatically.
+- **Pull request:** a TOML override in `config/examples/` with a comment explaining the source is the easiest contribution to merge, and `scripts/verify.sh` runs every example automatically.
 - **Direct:** [LinkedIn](https://www.linkedin.com/in/thembelihle-gumede-29a68095). I'm happy to set up a short call to walk through the repo.
 
 Contributors who change a model value or a design decision are credited in the CHANGELOG and the release notes.

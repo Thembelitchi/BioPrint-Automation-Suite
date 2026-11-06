@@ -1,4 +1,7 @@
-"""End-to-end test against a live Neo4j. Runs only when NEO4J_URI is set (CI does this)."""
+"""End-to-end tests against a live Neo4j.
+
+They run only when NEO4J_URI is set; scripts/verify.sh does this when Docker is available.
+"""
 
 from __future__ import annotations
 

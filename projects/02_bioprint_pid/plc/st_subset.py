@@ -1,6 +1,6 @@
 """Minimal interpreter for the IEC 61131-3 Structured Text subset used in plc/src.
 
-This is NOT a PLC compiler or runtime. It exists for one job: letting CI check
+This is NOT a PLC compiler or runtime. It exists for one job: letting the test suite check
 that the *logic* of FB_BioPrintPID.st and FB_WestgardMonitor.st matches the
 Python reference, by replaying the reference vectors through the actual ST
 source. A real compile in TwinCAT or CODESYS is still needed to confirm syntax,

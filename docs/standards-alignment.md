@@ -9,7 +9,7 @@ This page is written for industrial digital twin architects, BIM and constructio
 | Asset Administration Shell / IEC 63278 | Asset identity, submodel mapping | **Identifiers** in the graph; submodel mapping documented, no AAS server |
 | IFC / ISO 16739 | Link printed walls to BIM elements | **GlobalId** on `WallSegment`; IFC export documented, not built |
 | OPC UA / IEC 62541 | Machine data access (BioPrint-Guard) | Custom information model; companion-spec mapping documented |
-| IEC 61131-3 | PLC implementation of control and QC | **Ported** to Structured Text, logic-verified in CI |
+| IEC 61131-3 | PLC implementation of control and QC | **Ported** to Structured Text, logic-verified by the test suite |
 
 ---
 
@@ -88,4 +88,4 @@ Questions for reviewers on this and on multi-robot scaling are in [reviewers.md]
 
 ## IEC 61131-3: controller implementation
 
-The PID and Westgard logic exist as Structured Text function blocks (`projects/02_bioprint_pid/plc/`). They are logic-verified in CI against the Python reference by replaying 300 scans; compile and target validation in TwinCAT or CODESYS is open. See the [PLC README](../projects/02_bioprint_pid/plc/README.md).
+The PID and Westgard logic exist as Structured Text function blocks (`projects/02_bioprint_pid/plc/`). They are logic-verified by the test suite against the Python reference by replaying 300 scans; compile and target validation in TwinCAT or CODESYS is open. See the [PLC README](../projects/02_bioprint_pid/plc/README.md).

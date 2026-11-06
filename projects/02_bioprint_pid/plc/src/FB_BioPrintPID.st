@@ -13,7 +13,7 @@
    differences around 1e-3.
 
    Status: written to match the Python implementation line for line. It has NOT
-   been compiled in this repository (no PLC toolchain in CI). Verify it with
+   been compiled in this repository (no PLC toolchain available here). Verify it with
    tests/FB_BioPrintPID_Test.st (TcUnit) in TwinCAT 3 or CODESYS.
    ============================================================================= *)
 FUNCTION_BLOCK FB_BioPrintPID

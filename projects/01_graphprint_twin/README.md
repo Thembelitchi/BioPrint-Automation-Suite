@@ -95,7 +95,7 @@ NEO4J_URI=bolt://localhost:7687 python -m pytest   # adds live-graph integration
 | Layer bucketing (addendum v1.2) | `src/layer_aggregator.py` | `tests/test_layer_aggregator.py`, `test_raw_arrays_only_on_anomalous_layers` |
 | ISA-95 / AAS / IFC alignment | `TOPOLOGY_QUERY`, `src/ifc.py` | `test_isa95_hierarchy_and_standards_ids`, `tests/test_ifc.py` |
 | NFR 5.1 Constraints and retention | `CONSTRAINTS`, `prune_raw_arrays()` (`--prune-days`) | — |
-| NFR 5.2 < 250 ms per write | Per-layer write latency logged, with a warning above budget | CI log |
+| NFR 5.2 < 250 ms per write | Per-layer write latency logged, with a warning above budget | Run log |
 | NFR 5.3 Swappable data source | `TelemetrySource` protocol | `test_main_loop_writes_one_bucket_per_layer` |
 
 ## Files

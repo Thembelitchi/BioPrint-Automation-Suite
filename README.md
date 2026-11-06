@@ -22,7 +22,7 @@ This project crosses five specialisms, and I want each of them to be able to tes
 | **Polymer / materials scientist** | Power-law melt with Arrhenius K(T), Krieger-Dougherty fibre loading and Mw-based recycling effects, with every coefficient in the [assumptions register](./docs/model-assumptions.md) |
 | **Robotic construction operations lead** | Walls carry IFC GlobalIds, so QC results join to the BIM model; operations queries; a multi-robot scaling plan for Guard |
 | **Industrial digital twin architect** | Graph aligned with ISA-95, AAS ids and an OPC UA companion-spec mapping, with honest gaps ([standards alignment](./docs/standards-alignment.md)) |
-| **Controls engineer** | PID + Westgard ported to [IEC 61131-3 Structured Text](./projects/02_bioprint_pid/plc/), with TcUnit suites and reference vectors; CI checks the ST logic against Python to 1e-9 |
+| **Controls engineer** | PID + Westgard ported to [IEC 61131-3 Structured Text](./projects/02_bioprint_pid/plc/), with TcUnit suites and reference vectors; the test suite checks the ST logic against Python to 1e-9 |
 
 Feedback goes through the [Expert review issue form](https://github.com/Thembelitchi/BioPrint-Automation-Suite/issues/new?template=expert_review.yml).
 

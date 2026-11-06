@@ -1,7 +1,7 @@
 """The Structured Text port must reproduce the Python reference, scan by scan.
 
 The .st files are executed with plc/st_subset.py, a small interpreter for the ST
-subset they use. That checks the logic in CI. A compile in TwinCAT / CODESYS
+subset they use. That checks the logic in the test suite. A compile in TwinCAT / CODESYS
 (see plc/README.md) is still needed to confirm syntax and target behaviour.
 """
 

@@ -10,12 +10,12 @@ The control and QC logic of BioPrint-PID, ported from Python to Structured Text 
 | `tests/FB_BioPrintPID_Test.st`, `tests/FB_WestgardMonitor_Test.st` | [TcUnit](https://tcunit.org) suites that replay the vectors and check every output. |
 | `test_vectors/*.csv` | The same vectors as CSV, for any other test framework. |
 | `generate_test_vectors.py` | Regenerates the vectors and GVL from the Python model. |
-| `st_subset.py` | A small interpreter for the ST subset used here. It is used **only** to check the ST logic in CI. |
+| `st_subset.py` | A small interpreter for the ST subset used here. It is used **only** to check the ST logic in the test suite. |
 
 ## What has and hasn't been verified
 
-- ✅ **Logic:** CI executes the actual `.st` source with `st_subset.py` and replays all 300 reference scans. PID output and integrator match Python within 1e-9; every Westgard flag and the baseline SD match exactly (`tests/test_plc_port.py`).
-- ✅ **Freshness:** CI regenerates the vectors and fails if the committed copies are stale.
+- ✅ **Logic:** the test suite executes the actual `.st` source with `st_subset.py` and replays all 300 reference scans. PID output and integrator match Python within 1e-9; every Westgard flag and the baseline SD match exactly (`tests/test_plc_port.py`).
+- ✅ **Freshness:** the test suite regenerates the vectors and fails if the committed copies are stale.
 - ⚠️ **Not yet done:** compiling on a real toolchain and running on a target. The interpreter checks behaviour, not every rule of the IEC grammar, type system or task timing. **This is the step I'd most like a controls engineer to try.**
 
 ## Running it in TwinCAT 3 or CODESYS

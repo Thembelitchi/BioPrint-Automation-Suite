@@ -89,4 +89,4 @@ Gains tuned to a placeholder plant won't transfer to a real machine. With a meas
 
 ## How to propose a change
 
-Open an issue with the **Expert review** template. Include the A-ID, your value, its basis (a datasheet, test data or experience), and whether you'd expect it to change any PRD acceptance result. If you attach a TOML override, I'll add it to `config/examples/` and run it in CI.
+Open an issue with the **Expert review** template. Include the A-ID, your value, its basis (a datasheet, test data or experience), and whether you'd expect it to change any PRD acceptance result. If you attach a TOML override, I'll add it to `config/examples/`, where `scripts/verify.sh` runs it automatically.

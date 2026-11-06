@@ -88,7 +88,7 @@ bond_min_temp = 95.0
 support_max_temp = 130.0
 ```
 
-Unknown keys, misspellings and physically impossible values (e.g. a fibre loading past the packing limit) are rejected with a clear message. See [`config/examples/`](config/examples/) for a worked example, which also runs in CI.
+Unknown keys, misspellings and physically impossible values (e.g. a fibre loading past the packing limit) are rejected with a clear message. See [`config/examples/`](config/examples/) for a worked example, which `scripts/verify.sh` also runs.
 
 ### PLC port
 
@@ -101,7 +101,7 @@ The PID and Westgard blocks are also implemented in IEC 61131-3 Structured Text 
 | **FR-1** Discrete PID, dt = 0.1 s, anti-windup | `pid_controller.py`, `plc/src/FB_BioPrintPID.st` | `test_pid_controller.py`, `test_fr1_holds_for_every_seed`, `test_plc_port.py` |
 | **FR-2** Temperature-, flow- and composition-dependent melt, gantry coupling | `extruder_physics.py` | `test_extruder_physics.py`, `test_disturbance_raises_pressure` |
 | **FR-3** Westgard 1-2s / 1-3s / 2-2s with rolling mean, SD and CV% | `westgard_validator.py`, `plc/src/FB_WestgardMonitor.st` | `test_westgard_validator.py`, `test_fr3_detection_and_false_rejection_rate`, `test_plc_port.py` |
-| **FR-4** Dashboard and time-series export | `app.py` | `test_main_writes_outputs`, CI artifact |
+| **FR-4** Dashboard and time-series export | `app.py` | `test_main_writes_outputs`, files in `output/` |
 | Reviewer-adjustable parameters | `config/default.toml`, `config.py` | `test_config.py`, `test_example_configs_load_and_run` |
 | Layer-time window | `layer_thermal.py` | `test_layer_thermal.py` |
 | NFR 5.1 Deterministic timing | Simulated time by default; `--realtime` uses absolute monotonic ticks | — |
