@@ -1,9 +1,8 @@
 name: integration-tests
 
+# Optional, manual-only: run it from the Actions tab if you want a hosted run.
+# The same checks run locally with one command:  scripts/verify.sh
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 concurrency:
