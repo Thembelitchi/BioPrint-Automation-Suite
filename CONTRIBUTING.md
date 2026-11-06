@@ -12,14 +12,12 @@ Thanks for taking a look. This is a portfolio project, but issues, questions and
    - `ci`, `docs`, `repo` — everything else
 
    Examples: `feat(twin): add traceback query`, `fix(pid): stop integrating while saturated`.
-3. Open a pull request. `main` requires the `integration-tests` workflow to pass, and PRs are squash-merged.
+3. Run `scripts/verify.sh` and make sure the summary shows no failures, then open a pull request.
 
 ## Local checks
 
 ```bash
-pip install ruff
-ruff check .
-ruff format --check .
+scripts/verify.sh --install   # lint + every test + scenario runs (+ live Neo4j if Docker is available)
 ```
 
 Projects that need Neo4j expect one on `bolt://localhost:7687` with authentication disabled:

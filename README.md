@@ -2,7 +2,6 @@
 
 ### Cyber-Physical Digital Twins, Process Control & Industrial AI
 
-[![CI](https://github.com/Thembelitchi/BioPrint-Automation-Suite/actions/workflows/integration-tests.yml/badge.svg)](https://github.com/Thembelitchi/BioPrint-Automation-Suite/actions/workflows/integration-tests.yml)
 [![Release](https://img.shields.io/github/v/release/Thembelitchi/BioPrint-Automation-Suite)](https://github.com/Thembelitchi/BioPrint-Automation-Suite/releases)
 ![Python](https://img.shields.io/badge/python-3.11-blue)
 ![Neo4j](https://img.shields.io/badge/Neo4j-5.x-018bff)
@@ -60,18 +59,24 @@ docker compose up -d neo4j
 
 Each sub-project has its own `requirements.txt` and README with run instructions. These arrive as each release ships.
 
-## Continuous integration
+## Verification
 
-On every push and pull request, [`integration-tests.yml`](./.github/workflows/integration-tests.yml):
+Every check in the suite runs locally with one command:
 
-1. Lints the whole repo with Ruff.
-2. Runs each sub-project's checks. The graph-backed projects run against a live `neo4j:5-community` service container, and the OPC UA pipeline runs server → gateway → graph assertion in sequence.
+```bash
+scripts/verify.sh --install   # first run: installs each project's dev requirements
+scripts/verify.sh             # lint, all tests, scenario runs, live Neo4j stage
+```
+
+It runs Ruff, then each sub-project's tests and scenario runs. If Docker is available, it starts Neo4j with `docker compose` and runs the graph pipeline and its live integration tests; otherwise it reports that stage as skipped. It ends with a pass / fail / skip summary and exits non-zero on any failure.
+
+The same checks are also defined as a GitHub Actions workflow ([`integration-tests.yml`](./.github/workflows/integration-tests.yml)) that can be started manually from the Actions tab.
 
 ## Roadmap
 
 | Release | Milestone |
 |---|---|
-| **v0.1.0** | Monorepo scaffold, docs, CI foundation |
+| **v0.1.0** | Monorepo scaffold, docs, verification foundation |
 | v0.2.0 | GraphPrint-Twin |
 | v0.3.0 | BioPrint-PID |
 | v0.4.0 | BioPrint-Guard |
@@ -84,7 +89,8 @@ The full history is in the [CHANGELOG](./CHANGELOG.md).
 
 ```text
 BioPrint-Automation-Suite/
-├── .github/            CI workflow, issue and PR templates
+├── .github/            Optional workflow, issue and PR templates
+├── scripts/verify.sh   One-command local verification
 ├── docs/               Architecture notes and the shared graph schema
 ├── projects/
 │   ├── 01_graphprint_twin/
