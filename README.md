@@ -14,6 +14,20 @@ Before working with industrial data and knowledge graphs, I spent more than a de
 
 > **Everything here is simulated.** PLC registers, OPC UA nodes, motor telemetry and polymer behaviour are all modelled in Python. No physical hardware is involved. The point is the architecture and the engineering, which carry over to real equipment.
 
+## 🔍 For expert reviewers
+
+This project crosses five specialisms, and I want each of them to be able to test it on their own terms. The **[Expert Reviewer Guide](./docs/reviewers.md)** gives each one a 10-minute path, the specific questions I'd like answered, and the limitations I already know about:
+
+| If you are a… | You'll want |
+|---|---|
+| **LFAM process engineer** | Every machine parameter is in an [annotated config](./projects/02_bioprint_pid/config/default.toml) you can override with `--config`, plus a layer-time / inter-layer adhesion window vs ambient temperature |
+| **Polymer / materials scientist** | Power-law melt with Arrhenius K(T), Krieger-Dougherty fibre loading and Mw-based recycling effects, with every coefficient in the [assumptions register](./docs/model-assumptions.md) |
+| **Robotic construction operations lead** | Walls carry IFC GlobalIds, so QC results join to the BIM model; operations queries; a multi-robot scaling plan for Guard |
+| **Industrial digital twin architect** | Graph aligned with ISA-95, AAS ids and an OPC UA companion-spec mapping, with honest gaps ([standards alignment](./docs/standards-alignment.md)) |
+| **Controls engineer** | PID + Westgard ported to [IEC 61131-3 Structured Text](./projects/02_bioprint_pid/plc/), with TcUnit suites and reference vectors; CI checks the ST logic against Python to 1e-9 |
+
+Feedback goes through the [Expert review issue form](https://github.com/Thembelitchi/BioPrint-Automation-Suite/issues/new?template=expert_review.yml).
+
 ---
 
 ## The three sub-projects
@@ -22,7 +36,7 @@ Before working with industrial data and knowledge graphs, I spent more than a de
 |---|---|---|---|
 | 🏗️ | [**GraphPrint-Twin**](./projects/01_graphprint_twin) | Simulated PLC telemetry streamed into a Neo4j semantic digital twin, with one-query forensic traceback from a defect to its material batch. This project also owns the suite's [shared graph schema](./docs/graph-schema.md). | ✅ v0.2.0 |
 | 🧪 | [**BioPrint-PID**](./projects/02_bioprint_pid) | A discrete PID controller with anti-windup regulating a polymer extruder (thermal mass plus a shear-thinning melt model), monitored by clinical Westgard rules (1-2s, 1-3s, 2-2s). | ✅ v0.3.0 |
-| 🛡️ | [**BioPrint-Guard**](./projects/03_bioprint_guard) | An async OPC UA server streaming motor current, vibration and temperature at 10 Hz. A gateway scores wear from 0 to 1 and raises maintenance alerts in the same Neo4j twin. | Planned for v0.4.0 |
+| 🛡️ | [**BioPrint-Guard**](./projects/03_bioprint_guard) | An async OPC UA server streaming motor current, vibration and temperature at 10 Hz. A gateway scores wear from 0 to 1 and raises maintenance alerts in the same Neo4j twin. | Planned for v0.5.0 |
 
 ## Architecture
 
@@ -88,8 +102,9 @@ On every push and pull request, [`integration-tests.yml`](./.github/workflows/in
 | **v0.1.0** | Monorepo scaffold, docs, CI foundation |
 | **v0.2.0** | GraphPrint-Twin |
 | **v0.3.0** | BioPrint-PID |
-| v0.4.0 | BioPrint-Guard |
-| v0.5.0 | Cross-project integration tests in one workflow |
+| **v0.4.0** | Expert-review readiness: config-driven model, material and layer-time models, ISA-95/AAS/IFC alignment, Structured Text port |
+| v0.5.0 | BioPrint-Guard |
+| v0.6.0 | Cross-project integration tests in one workflow |
 | v1.0.0 | Portfolio release: diagrams, screenshots, demo |
 
 The full history is in the [CHANGELOG](./CHANGELOG.md).
@@ -99,7 +114,7 @@ The full history is in the [CHANGELOG](./CHANGELOG.md).
 ```text
 BioPrint-Automation-Suite/
 ├── .github/            CI workflow, issue and PR templates
-├── docs/               Architecture notes and the shared graph schema
+├── docs/               Reviewer guide, assumptions register, graph schema, standards alignment
 ├── projects/
 │   ├── 01_graphprint_twin/
 │   ├── 02_bioprint_pid/

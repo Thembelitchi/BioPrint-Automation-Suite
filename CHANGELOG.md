@@ -5,6 +5,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-06 — Expert-review readiness
+
+The aim of this release is that each of five specialisms can evaluate the suite on its own terms: LFAM process engineers, polymer scientists, robotic construction operations leads, industrial digital twin architects and controls engineers.
+
+### Added
+- **Reviewer guide** (`docs/reviewers.md`): for each specialism, what is built, a 10-minute exercise, the specific questions I'd like answered, and the limitations I already know about. Includes a cross-disciplinary glossary.
+- **Assumptions register** (`docs/model-assumptions.md`): every model parameter (A-01 to A-27) with value, unit, basis, confidence, intended reviewer and what real data would replace it.
+- **Standards alignment** (`docs/standards-alignment.md`): ISA-95, ISA-88, AAS, IFC, OPC UA companion specs and IEC 61131-3, with explicit gaps.
+- **Expert review issue form** (`.github/ISSUE_TEMPLATE/expert_review.yml`).
+- `pid`: **config-driven model.** All parameters are in `config/default.toml` (annotated with units and assumption IDs). `--config` merges a reviewer's override, invalid or misspelt keys are rejected clearly, and `--report-only` lets reviewers explore out-of-spec values. A worked example (`config/examples/winter_shop_high_fibre.toml`) runs in CI.
+- `pid`: **composition effects on melt viscosity.** Krieger-Dougherty fibre loading and Mw-based recycling degradation, applied relative to the calibration batch, plus a `material_sensitivity.png` chart and CSV.
+- `pid`: **layer-time / inter-layer adhesion window** vs factory ambient (`layer_thermal.py`, `layer_time_window.png`), with a Biot-number validity check.
+- `pid`: **IEC 61131-3 Structured Text port** of the PID and Westgard blocks (`plc/`), with TcUnit test suites, 300-scan reference vectors (CSV and ST GVL) and a generator. CI executes the ST logic with a small subset interpreter and matches Python to 1e-9.
+- `twin`: **ISA-95 equipment hierarchy** (Site → Area → WorkCenter → printer), ISA-88 control-module level, **AAS ids** on assets, **IFC GlobalId** (`ifc.py`) and `IfcWall` class on wall segments, and materials-science properties on batches (`fibre_wt_pct`, `recycle_generation`, `moisture_ppm`, `material_definition`). The traceback now returns IFC ids and batch composition.
+
+### Changed
+- `twin`: `MaterialBatch.fibre_pct` renamed to `fibre_wt_pct`.
+- `pid`: `app.simulate()` now takes a `SimulationConfig`; the module-level constants are gone.
+- Roadmap: BioPrint-Guard moves to v0.5.0 and cross-project integration to v0.6.0.
+- `pid`: the plant keeps a private copy of its thermal parameters, so a shared config object can never carry one run's disturbance into the next (regression test added).
+
+
 ## [0.3.0] - 2026-11-06
 
 ### Added
@@ -42,7 +64,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Issue templates, a pull request template and `CONTRIBUTING.md`.
 - MIT licence.
 
-[Unreleased]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/releases/tag/v0.1.0

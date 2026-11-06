@@ -40,6 +40,17 @@ def test_topology_is_idempotent(twin) -> None:
     )
 
 
+def test_isa95_hierarchy_and_standards_ids(twin) -> None:
+    path = (
+        "MATCH (:Site)-[:CONTAINS]->(:Area)-[:CONTAINS]->(:WorkCenter)-[:CONTAINS]->"
+        "(p:RoboticPrinter {id: 'Printer_01'})-[:HAS_COMPONENT]->(c:Component) "
+        "WHERE p.aas_id STARTS WITH 'urn:' AND c.aas_id STARTS WITH 'urn:' RETURN count(*)"
+    )
+    assert _count(twin, path) == 1
+    wall = "MATCH (w:WallSegment) WHERE size(w.ifc_guid) = 22 RETURN count(w)"
+    assert _count(twin, wall) == 1
+
+
 def test_ingested_readings_are_linked_and_traceable(twin) -> None:
     from database import PRINTER_ID, WALL_ID
     from plc_simulator import PLCExtruderSimulator
@@ -55,6 +66,8 @@ def test_ingested_readings_are_linked_and_traceable(twin) -> None:
     assert anomalous, "seed 42 should produce at least one anomaly"
     assert anomalous <= traced.keys()
     assert all(traced[i]["batch"] == "BATCH-rPETG-GF-001" for i in anomalous)
+    assert all(traced[i]["recycle_generation"] == 1 for i in anomalous)
+    assert all(len(traced[i]["wall_ifc_guid"]) == 22 for i in anomalous)
 
 
 def test_ingest_into_unknown_wall_fails(twin) -> None:

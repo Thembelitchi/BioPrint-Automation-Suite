@@ -22,6 +22,7 @@ import time
 from collections.abc import Iterable
 from typing import Any
 
+from ifc import global_id_for
 from neo4j import Driver, GraphDatabase, ManagedTransaction
 from neo4j.exceptions import ServiceUnavailable
 from plc_simulator import TelemetryReading
@@ -29,8 +30,17 @@ from plc_simulator import TelemetryReading
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Baseline factory topology (see docs/graph-schema.md)
+# Baseline factory topology (see docs/graph-schema.md and docs/standards-alignment.md)
+#
+# Equipment follows the ISA-95 (IEC 62264) role-based hierarchy:
+#   Site -> Area -> WorkCenter (production line) -> WorkUnit (printer)
+# with the stepper motor as an ISA-88 control module below the work unit.
+# Printers and components carry an Asset Administration Shell id (aas_id) and
+# wall segments carry an IFC GlobalId (ifc_guid) for BIM integration.
 # ---------------------------------------------------------------------------
+SITE_ID = "Site_KZN_01"
+AREA_ID = "Area_PrintHall_A"
+WORKCENTER_ID = "WC_Line_1"
 PLC_ID = "PLC_01"
 PRINTER_ID = "Printer_01"
 COMPONENT_ID = "Printer_01/StepperMotor_X"
@@ -38,6 +48,9 @@ WALL_ID = "Studio_Unit_BackWall"
 BATCH_ID = "BATCH-rPETG-GF-001"
 
 CONSTRAINTS: tuple[str, ...] = (
+    "CREATE CONSTRAINT site_id IF NOT EXISTS FOR (n:Site) REQUIRE n.id IS UNIQUE",
+    "CREATE CONSTRAINT area_id IF NOT EXISTS FOR (n:Area) REQUIRE n.id IS UNIQUE",
+    "CREATE CONSTRAINT workcenter_id IF NOT EXISTS FOR (n:WorkCenter) REQUIRE n.id IS UNIQUE",
     "CREATE CONSTRAINT plc_id IF NOT EXISTS FOR (n:PLC_Controller) REQUIRE n.id IS UNIQUE",
     "CREATE CONSTRAINT printer_id IF NOT EXISTS FOR (n:RoboticPrinter) REQUIRE n.id IS UNIQUE",
     "CREATE CONSTRAINT component_id IF NOT EXISTS FOR (n:Component) REQUIRE n.id IS UNIQUE",
@@ -48,35 +61,64 @@ CONSTRAINTS: tuple[str, ...] = (
 )
 
 TOPOLOGY_QUERY = """
+MERGE (s:Site {id: $site_id})
+  ON CREATE SET s.name = $site_name, s.isa95_level = "Site"
+MERGE (a:Area {id: $area_id})
+  ON CREATE SET a.name = $area_name, a.isa95_level = "Area"
+MERGE (wc:WorkCenter {id: $workcenter_id})
+  ON CREATE SET wc.name = $workcenter_name, wc.isa95_level = "WorkCenter",
+                wc.isa95_type = "ProductionLine"
 MERGE (plc:PLC_Controller {id: $plc_id})
   ON CREATE SET plc.ip = $plc_ip
 MERGE (p:RoboticPrinter {id: $printer_id})
-  ON CREATE SET p.type = $printer_type
+  ON CREATE SET p.type = $printer_type, p.isa95_level = "WorkUnit", p.aas_id = $printer_aas_id
 MERGE (c:Component {id: $component_id})
-  ON CREATE SET c.name = $component_name, c.axis = $component_axis
+  ON CREATE SET c.name = $component_name, c.axis = $component_axis,
+                c.isa88_level = "ControlModule", c.aas_id = $component_aas_id
 MERGE (w:WallSegment {id: $wall_id})
-  ON CREATE SET w.required_layers = $required_layers
+  ON CREATE SET w.required_layers = $required_layers, w.ifc_guid = $wall_ifc_guid,
+                w.ifc_class = "IfcWall", w.design_ref = $wall_design_ref
 MERGE (m:MaterialBatch {id: $batch_id})
-  ON CREATE SET m.vendor = $batch_vendor, m.polymer = $batch_polymer, m.fibre_pct = $batch_fibre_pct
+  ON CREATE SET m.vendor = $batch_vendor, m.polymer = $batch_polymer,
+                m.fibre_wt_pct = $batch_fibre_wt_pct,
+                m.recycle_generation = $batch_recycle_generation,
+                m.moisture_ppm = $batch_moisture_ppm,
+                m.isa95_class = "MaterialLot", m.material_definition = $batch_definition
+MERGE (s)-[:CONTAINS]->(a)
+MERGE (a)-[:CONTAINS]->(wc)
+MERGE (wc)-[:CONTAINS]->(p)
 MERGE (plc)-[:CONTROLS]->(p)
 MERGE (p)-[:HAS_COMPONENT]->(c)
 MERGE (w)-[:USES_MATERIAL]->(m)
 """
 
 TOPOLOGY_PARAMS: dict[str, Any] = {
+    "site_id": SITE_ID,
+    "site_name": "Durban print plant (simulated)",
+    "area_id": AREA_ID,
+    "area_name": "Print hall A",
+    "workcenter_id": WORKCENTER_ID,
+    "workcenter_name": "Wall-panel line 1",
     "plc_id": PLC_ID,
     "plc_ip": "192.168.10.21",
     "printer_id": PRINTER_ID,
     "printer_type": "Gantry-3D",
+    "printer_aas_id": f"urn:bioprint:aas:{PRINTER_ID}",
     "component_id": COMPONENT_ID,
     "component_name": "StepperMotor",
     "component_axis": "X",
+    "component_aas_id": f"urn:bioprint:aas:{COMPONENT_ID}",
     "wall_id": WALL_ID,
     "required_layers": 160,
+    "wall_ifc_guid": global_id_for(WALL_ID),
+    "wall_design_ref": "studio_unit_v3.ifc",
     "batch_id": BATCH_ID,
     "batch_vendor": "Simulated Polymers (Pty) Ltd",
     "batch_polymer": "rPETG",
-    "batch_fibre_pct": 15,
+    "batch_fibre_wt_pct": 15.0,
+    "batch_recycle_generation": 1,
+    "batch_moisture_ppm": 150,
+    "batch_definition": "rPETG-GF15",
 }
 
 # MATCH first, then CREATE: a reading is only written if its printer and wall
@@ -105,8 +147,11 @@ RETURN t.id AS log_id,
        t.pump_pressure AS pump_pressure,
        p.id AS printer,
        w.id AS wall_segment,
+       w.ifc_guid AS wall_ifc_guid,
        m.id AS batch,
-       m.vendor AS vendor
+       m.vendor AS vendor,
+       m.fibre_wt_pct AS fibre_wt_pct,
+       m.recycle_generation AS recycle_generation
 ORDER BY t.timestamp
 """
 
@@ -214,8 +259,10 @@ class DigitalTwinBridge:
         with self._driver.session(database=self._database) as session:
             session.execute_write(self._merge_topology)
         log.info(
-            "Topology ready: %s -> %s -> %s; %s -> %s",
-            PLC_ID,
+            "Topology ready: %s > %s > %s > %s > %s; %s -> %s",
+            SITE_ID,
+            AREA_ID,
+            WORKCENTER_ID,
             PRINTER_ID,
             COMPONENT_ID,
             WALL_ID,

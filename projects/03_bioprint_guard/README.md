@@ -2,7 +2,7 @@
 
 **Async OPC UA predictive maintenance.** A simulated OPC UA server publishes stepper-motor current, housing temperature and vibration at 10 Hz, with a progressive friction-wear fault injected after 15 s. An async gateway subscribes, scores each sample from 0 to 1 (rolling multivariate Z-score + EWMA), and raises a maintenance alert in the shared Neo4j twin when the score passes 0.85.
 
-> **Status:** planned for **v0.4.0**.
+> **Status:** planned for **v0.5.0**. The requirements are summarised below; questions for reviewers on multi-robot scaling and OPC UA companion specs are in [docs/reviewers.md](../../docs/reviewers.md).
 
 | Requirement | Summary |
 |---|---|
