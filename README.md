@@ -2,7 +2,6 @@
 
 ### Cyber-Physical Digital Twins, Process Control & Industrial AI
 
-[![Release](https://img.shields.io/github/v/release/Thembelitchi/BioPrint-Automation-Suite)](https://github.com/Thembelitchi/BioPrint-Automation-Suite/releases)
 ![Python](https://img.shields.io/badge/python-3.11-blue)
 ![Neo4j](https://img.shields.io/badge/Neo4j-5.x-018bff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
