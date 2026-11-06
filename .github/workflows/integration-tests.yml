@@ -82,6 +82,40 @@ jobs:
           path: projects/01_graphprint_twin/output/
           if-no-files-found: ignore
 
+  bioprint-pid:
+    name: BioPrint-PID (control + Westgard QC)
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: projects/02_bioprint_pid
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: projects/02_bioprint_pid/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Unit and scenario tests (FR-1 to FR-4, 50-seed robustness)
+        run: python -m pytest
+
+      - name: 30 s extrusion run with acceptance checks
+        run: python src/app.py
+
+      - name: Upload dashboard and run data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bioprint-pid-dashboard
+          path: projects/02_bioprint_pid/output/
+          if-no-files-found: warn
+
   # Planned:
-  #   v0.3.0  bioprint-pid     (dashboard uploaded as artifact)
   #   v0.4.0  bioprint-guard   (OPC UA server -> gateway -> Neo4j assertion)

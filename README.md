@@ -21,7 +21,7 @@ Before working with industrial data and knowledge graphs, I spent more than a de
 | | Project | What it shows | Status |
 |---|---|---|---|
 | 🏗️ | [**GraphPrint-Twin**](./projects/01_graphprint_twin) | Simulated PLC telemetry streamed into a Neo4j semantic digital twin, with one-query forensic traceback from a defect to its material batch. This project also owns the suite's [shared graph schema](./docs/graph-schema.md). | ✅ v0.2.0 |
-| 🧪 | [**BioPrint-PID**](./projects/02_bioprint_pid) | A discrete PID controller with anti-windup regulating a polymer extruder (thermal mass plus a shear-thinning melt model), monitored by clinical Westgard rules (1-2s, 1-3s, 2-2s). | Planned for v0.3.0 |
+| 🧪 | [**BioPrint-PID**](./projects/02_bioprint_pid) | A discrete PID controller with anti-windup regulating a polymer extruder (thermal mass plus a shear-thinning melt model), monitored by clinical Westgard rules (1-2s, 1-3s, 2-2s). | ✅ v0.3.0 |
 | 🛡️ | [**BioPrint-Guard**](./projects/03_bioprint_guard) | An async OPC UA server streaming motor current, vibration and temperature at 10 Hz. A gateway scores wear from 0 to 1 and raises maintenance alerts in the same Neo4j twin. | Planned for v0.4.0 |
 
 ## Architecture
@@ -45,6 +45,12 @@ flowchart LR
     OPC --> GW --> AD --> GW
     GW -- "score ≥ 0.85" --> NEO
 ```
+
+### BioPrint-PID at a glance
+
+![BioPrint-PID dashboard: tracking, controller effort, nozzle pressure and a Levey-Jennings chart](./assets/pid_step_response.png)
+
+A roller door opens at 15 s. The PID loop recovers within about 5 s, and the Westgard monitor flags the excursion 0.2 s after onset (1-3s, then 2-2s). That is the clinical-lab habit of judging a run by its control results, applied to a polymer extruder.
 
 GraphPrint-Twin and BioPrint-Guard write into **the same graph**. A printer's telemetry and the maintenance alerts on its stepper motor sit on connected nodes, so one query can answer questions like "which walls were printed while this motor was degrading?" More detail is in [`docs/architecture.md`](./docs/architecture.md).
 
@@ -81,7 +87,7 @@ On every push and pull request, [`integration-tests.yml`](./.github/workflows/in
 |---|---|
 | **v0.1.0** | Monorepo scaffold, docs, CI foundation |
 | **v0.2.0** | GraphPrint-Twin |
-| v0.3.0 | BioPrint-PID |
+| **v0.3.0** | BioPrint-PID |
 | v0.4.0 | BioPrint-Guard |
 | v0.5.0 | Cross-project integration tests in one workflow |
 | v1.0.0 | Portfolio release: diagrams, screenshots, demo |
