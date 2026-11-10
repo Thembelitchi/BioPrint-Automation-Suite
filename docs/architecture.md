@@ -45,7 +45,8 @@ flowchart TB
 | **Clinical QC on an industrial loop** | Westgard rules catch drift and systematic error from the pattern of results, not only from a single value breaking a limit. Control limits are fixed from a stable baseline window, the way a lab sets limits from its control material. |
 | **Deterministic simulations** | Fixed random seeds and simulated time by default, so the tests can assert on outcomes. A `--realtime` flag exists for live demos. |
 | **Async end to end in Guard** | OPC UA intake, scoring and Bolt writes run as separate `asyncio` tasks joined by a queue, so a slow database write never drops a sample. |
-| **Sequenced OPC UA checks** | The server starts first, the check waits for port 4840, then the gateway runs with a timeout, then a Cypher assertion checks the result. |
+| **Sequenced OPC UA checks** | The server starts first, the check waits for its port, then the gateway runs with a timeout and asserts that exactly one open alert exists in the graph. |
+| **Frozen baseline in Guard** | The detector fixes each signal's mean and SD from the first 10 s of healthy running and never adapts them, so slow wear cannot be learned as normal. |
 
 ## Technology
 
@@ -54,7 +55,7 @@ flowchart TB
 | Language | Python 3.11 (3.10+ compatible) |
 | Graph | Neo4j 5 Community, official `neo4j` Python driver (sync in Twin, async in Guard) |
 | Industrial protocol | OPC UA via `asyncua` |
-| Numerics & analytics | NumPy, pandas, scikit-learn (optional Isolation Forest) |
+| Numerics & analytics | NumPy, pandas |
 | Visualisation | Matplotlib (step response and Levey-Jennings charts) |
 | Verification | `scripts/verify.sh` (Ruff, pytest, scenario runs, Neo4j via docker compose); the same checks as an optional manual GitHub Actions workflow |
 

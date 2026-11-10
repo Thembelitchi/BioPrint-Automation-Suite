@@ -119,5 +119,61 @@ jobs:
           path: projects/02_bioprint_pid/output/
           if-no-files-found: warn
 
-  # Planned:
-  #   v0.5.0  bioprint-guard   (OPC UA server -> gateway -> Neo4j assertion)
+  bioprint-guard:
+    name: BioPrint-Guard (OPC UA -> gateway -> Neo4j)
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: projects/03_bioprint_guard
+
+    services:
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: none
+        ports:
+          - 7687:7687
+
+    env:
+      NEO4J_WAIT_SECONDS: "120"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: projects/03_bioprint_guard/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Unit and OPC UA loopback tests (FR-1 to FR-3)
+        run: NEO4J_URI= python -m pytest
+
+      - name: Scenario with acceptance checks, alerts in memory (FR-1 to FR-4)
+        run: NEO4J_URI= python src/app.py --speed 10 --port 0
+
+      - name: Server, then gateway, then graph assertion (FR-4)
+        env:
+          NEO4J_URI: bolt://localhost:7687
+        run: |
+          python src/opcua_server.py --duration 30 --speed 10 --start-delay 5 &
+          python src/gateway.py --samples 300 --duration 90 --require-alert
+          wait
+
+      - name: Graph integration tests (FR-4)
+        env:
+          NEO4J_URI: bolt://localhost:7687
+        run: python -m pytest tests/test_integration.py
+
+      - name: Upload chart and run data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bioprint-guard-scores
+          path: projects/03_bioprint_guard/output/
+          if-no-files-found: warn

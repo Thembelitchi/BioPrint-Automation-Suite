@@ -76,7 +76,7 @@ With IfcOpenShell this is a short script: open the design IFC, look up each wall
 
 ## OPC UA (IEC 62541): BioPrint-Guard's information model
 
-BioPrint-Guard (v0.5.0) exposes `Objects/FactoryFloor/ExtrusionGantry/StepperMotor` with `motor_current`, `housing_temp` and `vibration_frequency` in a custom namespace. That keeps the demo small, but it is **not** a companion-spec model. The mapping a production system would use:
+BioPrint-Guard exposes `Objects/FactoryFloor/ExtrusionGantry/StepperMotor` with `motor_current`, `housing_temp` and `vibration_frequency` in a custom namespace. That keeps the demo small, but it is **not** a companion-spec model. The mapping a production system would use:
 
 | Companion spec | What it would standardise |
 |---|---|

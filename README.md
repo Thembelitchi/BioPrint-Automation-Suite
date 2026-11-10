@@ -20,7 +20,7 @@ This project crosses five specialisms, and I want each of them to be able to tes
 |---|---|
 | **LFAM process engineer** | Every machine parameter is in an [annotated config](./projects/02_bioprint_pid/config/default.toml) you can override with `--config`, plus a layer-time / inter-layer adhesion window vs ambient temperature |
 | **Polymer / materials scientist** | Power-law melt with Arrhenius K(T), Krieger-Dougherty fibre loading and Mw-based recycling effects, with every coefficient in the [assumptions register](./docs/model-assumptions.md) |
-| **Robotic construction operations lead** | Walls carry IFC GlobalIds, so QC results join to the BIM model; operations queries; a multi-robot scaling plan for Guard |
+| **Robotic construction operations lead** | Walls carry IFC GlobalIds, so QC results join to the BIM model; operations queries; an OPC UA predictive-maintenance gateway (Guard) writing alerts into the same graph |
 | **Industrial digital twin architect** | Graph aligned with ISA-95, AAS ids and an OPC UA companion-spec mapping, with honest gaps ([standards alignment](./docs/standards-alignment.md)) |
 | **Controls engineer** | PID + Westgard ported to [IEC 61131-3 Structured Text](./projects/02_bioprint_pid/plc/), with TcUnit suites and reference vectors; the test suite checks the ST logic against Python to 1e-9 |
 
@@ -34,7 +34,7 @@ Feedback goes through the [Expert review issue form](https://github.com/Thembeli
 |---|---|---|---|
 | 🏗️ | [**GraphPrint-Twin**](./projects/01_graphprint_twin) | Simulated 10 Hz PLC telemetry streamed into a Neo4j semantic digital twin as one bucket per printed layer, with one-query forensic traceback from a defect to its material batch. This project also owns the suite's [shared graph schema](./docs/graph-schema.md). | ✅ v0.2.0 |
 | 🧪 | [**BioPrint-PID**](./projects/02_bioprint_pid) | A discrete PID controller with anti-windup regulating a polymer extruder (thermal mass plus a shear-thinning melt model), monitored by clinical Westgard rules (1-2s, 1-3s, 2-2s). | ✅ v0.3.0 |
-| 🛡️ | [**BioPrint-Guard**](./projects/03_bioprint_guard) | An async OPC UA server streaming motor current, vibration and temperature at 10 Hz. A gateway scores wear from 0 to 1 and raises maintenance alerts in the same Neo4j twin. | Planned for v0.5.0 |
+| 🛡️ | [**BioPrint-Guard**](./projects/03_bioprint_guard) | An async OPC UA server streaming motor current, vibration and temperature at 10 Hz. A gateway scores wear from 0 to 1 against a frozen healthy baseline and raises maintenance alerts in the same Neo4j twin. | ✅ v0.5.0 |
 
 ## Architecture
 
@@ -63,6 +63,12 @@ flowchart LR
 ![BioPrint-PID dashboard: tracking, controller effort, nozzle pressure and a Levey-Jennings chart](./assets/pid_step_response.png)
 
 A roller door opens at 15 s. The PID loop recovers within about 5 s, and the Westgard monitor flags the excursion 0.2 s after onset (1-3s, then 2-2s). That is the clinical-lab habit of judging a run by its control results, applied to a polymer extruder.
+
+### BioPrint-Guard at a glance
+
+![BioPrint-Guard: motor current, housing temperature, vibration and the risk score](./assets/guard_risk_score.png)
+
+Wear starts at 15 s. The limits were fixed from the first 10 s of healthy running, so the slow drift cannot become the new normal, and the alert is raised 3.8 s after onset, at 38 % wear.
 
 GraphPrint-Twin and BioPrint-Guard write into **the same graph**. A printer's telemetry and the maintenance alerts on its stepper motor sit on connected nodes, so one query can answer questions like "which walls were printed while this motor was degrading?" More detail is in [`docs/architecture.md`](./docs/architecture.md).
 
@@ -95,7 +101,7 @@ scripts/verify.sh --install   # first run: installs each project's dev requireme
 scripts/verify.sh             # lint, all tests, scenario runs, live Neo4j stage
 ```
 
-It runs Ruff, then each sub-project's tests and scenario runs. If Docker is available, it starts Neo4j with `docker compose` and runs the graph pipeline and its live integration tests; otherwise it reports that stage as skipped. It ends with a pass / fail / skip summary and exits non-zero on any failure.
+It runs Ruff, then each sub-project's tests and scenario runs. If Docker is available, it starts Neo4j with `docker compose` and runs the Twin pipeline, the Guard server → gateway → graph run and both projects' live integration tests; otherwise it reports that stage as skipped. It ends with a pass / fail / skip summary and exits non-zero on any failure.
 
 The same checks are also defined as a GitHub Actions workflow ([`integration-tests.yml`](./.github/workflows/integration-tests.yml)) that can be started manually from the Actions tab.
 
@@ -107,7 +113,7 @@ The same checks are also defined as a GitHub Actions workflow ([`integration-tes
 | **v0.2.0** | GraphPrint-Twin |
 | **v0.3.0** | BioPrint-PID |
 | **v0.4.0** | Expert-review readiness: config-driven model, material and layer-time models, ISA-95/AAS/IFC alignment, Structured Text port |
-| v0.5.0 | BioPrint-Guard |
+| **v0.5.0** | BioPrint-Guard |
 | v0.6.0 | Cross-project integration tests in one workflow |
 | v1.0.0 | Portfolio release: diagrams, screenshots, demo |
 

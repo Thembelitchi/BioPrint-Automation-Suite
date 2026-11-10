@@ -10,7 +10,7 @@ This guide gives each kind of reviewer a short path: what is built, where to loo
 |---|---|---|
 | [LFAM process engineer](#lfam-process-engineer) | BioPrint-PID config + layer-time chart | 10 min |
 | [Polymer / materials scientist](#polymer--materials-scientist) | Melt model + assumptions A-08 to A-16 | 10 min |
-| [Robotic construction operations / automation architect](#robotic-construction-operations--automation-architect) | Graph queries, IFC hooks, Guard scaling plan | 15 min |
+| [Robotic construction operations / automation architect](#robotic-construction-operations--automation-architect) | Graph queries, IFC hooks, Guard alerts | 15 min |
 | [Industrial digital twin architect](#industrial-digital-twin-architect) | Graph schema + standards alignment | 15 min |
 | [Controls engineer](#controls-engineer) | PID / Westgard in Python and Structured Text | 15 min |
 
@@ -88,18 +88,18 @@ python src/app.py --config my_values.toml --report-only
 - A knowledge graph linking **site → hall → line → printer → component**, plus **wall → material batch** ([graph-schema.md](graph-schema.md))
 - Each printed wall carries a valid **IFC GlobalId** and `IfcWall` class, so QC results can be joined to the BIM model ([standards-alignment.md](standards-alignment.md#ifc-iso-16739-printed-walls-in-bim)). A `Pset_BioPrintQuality` export is designed but not built.
 - An operations query: "which walls were printed while a component had an open maintenance alert?", returned with IFC ids for a BIM viewer
-- BioPrint-Guard (next release, v0.5.0): an async OPC UA predictive-maintenance gateway writing alerts into the same graph
+- BioPrint-Guard: an async OPC UA predictive-maintenance gateway that scores stepper-motor wear and writes one deduplicated alert per component into the same graph ([README](../projects/03_bioprint_guard/README.md))
 
 **15-minute exercise.** Read the key queries in [graph-schema.md](graph-schema.md#key-queries) and the IFC section of [standards-alignment.md](standards-alignment.md). Then ask: would a project manager actually use this, and in which tool?
 
 **Questions I'd most like answered**
 1. What questions do your project managers ask after a failed or suspect print? I'd like the graph to answer them directly.
 2. Are the proposed `Pset_BioPrintQuality` properties the right ones? Which BIM platform should the export target first?
-3. For BioPrint-Guard: how many robots and signals per hall? Would you run one OPC UA server per robot, an aggregating server, or MQTT/Sparkplug B? (The v0.5.0 PRD includes a multi-robot scaling requirement.)
+3. For BioPrint-Guard: how many robots and signals per hall? Would you run one OPC UA server per robot, an aggregating server, or MQTT/Sparkplug B? (Guard monitors one motor today; multi-robot scaling is not built.)
 4. What alert lead time and false-alarm rate make predictive maintenance worth it against a 24-hour print window?
 5. Where should this sit relative to your MES: feeding it, or reading from it?
 
-**Known limitations:** single site, line and printer in the demo; no job orders or scheduling; IFC export not implemented; Guard not yet built.
+**Known limitations:** single site, line and printer in the demo; no job orders or scheduling; IFC export not implemented; Guard monitors a single motor with a custom OPC UA model, no security policy, and a fault compressed into seconds.
 
 ## Industrial digital twin architect
 

@@ -12,6 +12,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - The GitHub Actions workflow runs only when started manually; local verification is the primary path.
 - README: removed the workflow-status and release badges.
 
+## [0.5.0] - 2026-11-10
+
+### Added
+- **BioPrint-Guard** (`projects/03_bioprint_guard`):
+  - `StepperMotorSimulator`: seeded motor current, housing temperature and vibration frequency at 10 Hz on a simulated clock, with a progressive friction-wear fault after 15 s (temperature follows with a thermal lag).
+  - `MotorOpcUaServer`: asyncua server exposing `FactoryFloor/ExtrusionGantry/StepperMotor` in the `urn:bioprint:guard` namespace; the three values of a reading share one source timestamp. `--speed` replays the same samples faster than real time.
+  - `StreamingAnomalyDetector`: per-signal limits fixed from a 10 s healthy baseline and then frozen, multivariate Z-score, EWMA smoothing and a logistic map to a 0–1 risk score.
+  - `OpcUaGateway`: one subscription for all three variables, readings reassembled by source timestamp, reconnect with exponential backoff, and intake / scoring / alert writing as separate `asyncio` tasks joined by queues.
+  - `Neo4jAlertSink` (async driver): bootstraps the printer and component if the Twin has not run, and keeps at most one `OPEN` `MaintenanceAlert` per component, whose peak and severity only rise. `InMemoryAlertSink` applies the same rule without a database.
+  - `app.py`: one-command scenario with FR-1 to FR-4 acceptance checks, a scores CSV, a four-panel chart and `acceptance.json`; exits non-zero if any check fails.
+  - 66 tests, including real OPC UA sessions on localhost (exact value round trip, server absent at start, server restarted mid-run, slow database), a 30-seed detection sweep and live-Neo4j integration tests.
+- `scripts/verify.sh`: Guard tests, the Guard scenario, and a live stage that runs the server and gateway as two processes against Neo4j and then asserts the graph state.
+- Workflow job `bioprint-guard`.
+- Guard chart in `assets/`, embedded in the READMEs.
+
+### Changed
+- `docs/graph-schema.md`: the alert query now locks the component first and never lowers an open alert's severity; added `MaintenanceAlert.source` / `closed_at`, `Component.last_alert_at` and the close-alert query.
+- `guard`: `scikit-learn` dropped from the requirements. The Isolation Forest option that the scaffold mentioned is not built.
+- The Guard detector uses a frozen baseline rather than the rolling one the scaffold described, so slow wear cannot be absorbed into the limits.
+
+
 ## [0.4.0] - 2026-11-06 — Expert-review readiness
 
 The aim of this release is that each of five specialisms can evaluate the suite on its own terms: LFAM process engineers, polymer scientists, robotic construction operations leads, industrial digital twin architects and controls engineers.
@@ -74,7 +95,8 @@ The aim of this release is that each of five specialisms can evaluate the suite 
 - Issue templates, a pull request template and `CONTRIBUTING.md`.
 - MIT licence.
 
-[Unreleased]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.1.0...v0.2.0

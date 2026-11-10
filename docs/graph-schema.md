@@ -35,14 +35,14 @@ graph LR
 | `WorkCenter` | `id`, `name`, `isa95_level`, `isa95_type` | ISA-95 Work Center (production line) | Twin (topology) |
 | `PLC_Controller` | `id`, `ip` | Level 1–2 control system | Twin (topology) |
 | `RoboticPrinter` | `id`, `type`, `isa95_level`, `aas_id` | ISA-95 Work Unit; AAS asset | Twin (topology) |
-| `Component` | `id`, `name`, `axis`, `isa88_level`, `aas_id` | ISA-88 Control Module; AAS asset | Twin (topology); Guard bootstraps if missing |
+| `Component` | `id`, `name`, `axis`, `isa88_level`, `aas_id`, `last_alert_at` | ISA-88 Control Module; AAS asset | Twin (topology); Guard bootstraps if missing |
 | `WallSegment` | `id`, `required_layers`, `ifc_guid`, `ifc_class`, `design_ref` | IFC `IfcWall` (by GlobalId) | Twin (topology) |
 | `MaterialBatch` | `id`, `vendor`, `polymer`, `fibre_wt_pct`, `recycle_generation`, `moisture_ppm`, `isa95_class`, `material_definition` | ISA-95 Material Lot | Twin (topology) |
 | `LayerTelemetry` | `id`, `layer_index`, `start_time`, `end_time`, `sample_period_s`, `n_samples`, `temp_mean/min/max/sd/cv_pct`, `pressure_mean/min/max/sd`, `anomaly_count`, `anomaly_offsets`, `status`, `raw_stored`, `raw_temps`, `raw_pressures` | Time-series bucket for one printed layer; AAS TimeSeries segment; ISA-95 segment response | Twin (ingestion) |
-| `MaintenanceAlert` | `id`, `status`, `severity`, `peak_risk_score`, `created_at`, `updated_at` | Maintenance request | Guard |
+| `MaintenanceAlert` | `id`, `status`, `severity`, `peak_risk_score`, `source`, `created_at`, `updated_at`, `closed_at` | Maintenance request | Guard |
 
 `LayerTelemetry.status` is `ANOMALY_WARNING` if any sample in the layer left the 235 °C / 48 bar envelope, otherwise `OPTIMAL`.
-`MaintenanceAlert.status` is `OPEN` or `CLOSED`; `severity` is `HIGH` (score 0.85–0.94) or `CRITICAL` (≥ 0.95).
+`MaintenanceAlert.status` is `OPEN` or `CLOSED`; `severity` is `HIGH` (score 0.85–0.94) or `CRITICAL` (≥ 0.95). While an alert is open its `peak_risk_score` and `severity` only go up. `Component.last_alert_at` is set by Guard each time it raises or updates an alert.
 
 ## Relationships
 
@@ -170,17 +170,29 @@ RETURN wc.name AS line, p.id AS printer, count(b) AS layers, sum(b.n_samples) AS
        sum(CASE b.status WHEN "ANOMALY_WARNING" THEN 1 ELSE 0 END) AS anomalous_layers;
 ```
 
-**Raise or update a maintenance alert (Guard)**: idempotent, with at most one open alert per component:
+**Raise or update a maintenance alert (Guard)**: idempotent, with at most one open alert per component. The `SET` on the component comes first so it takes the component's write lock, which stops two gateways from both seeing "no open alert" and creating two:
 
 ```cypher
 MATCH (c:Component {id: $component_id})
+SET c.last_alert_at = datetime()
+WITH c
 OPTIONAL MATCH (c)-[:REQUIRES_INSPECTION]->(open:MaintenanceAlert {status: "OPEN"})
+WITH c, open ORDER BY open.created_at LIMIT 1
 FOREACH (_ IN CASE WHEN open IS NULL THEN [1] ELSE [] END |
   CREATE (c)-[:REQUIRES_INSPECTION]->(:MaintenanceAlert {
-    id: $alert_id, status: "OPEN", severity: $severity,
-    peak_risk_score: $risk, created_at: datetime(), updated_at: datetime()}))
-FOREACH (_ IN CASE WHEN open IS NOT NULL THEN [1] ELSE [] END |
-  SET open.peak_risk_score = CASE WHEN $risk > open.peak_risk_score THEN $risk ELSE open.peak_risk_score END,
-      open.severity = $severity,
-      open.updated_at = datetime());
+    id: $alert_id, status: "OPEN", severity: $severity, peak_risk_score: $risk,
+    source: $source, created_at: datetime(), updated_at: datetime()}))
+FOREACH (_ IN CASE WHEN open IS NOT NULL AND $risk > open.peak_risk_score THEN [1] ELSE [] END |
+  SET open.severity = $severity, open.peak_risk_score = $risk, open.updated_at = datetime())
+WITH c, open IS NULL AS created
+MATCH (c)-[:REQUIRES_INSPECTION]->(a:MaintenanceAlert {status: "OPEN"})
+RETURN a.id AS id, a.severity AS severity, a.peak_risk_score AS peak_risk_score, created;
+```
+
+**Close an alert after the inspection (Guard)**: the alert stays in the graph as history:
+
+```cypher
+MATCH (:Component {id: $component_id})-[:REQUIRES_INSPECTION]->(a:MaintenanceAlert {status: "OPEN"})
+SET a.status = "CLOSED", a.closed_at = datetime(), a.updated_at = datetime()
+RETURN count(a) AS closed;
 ```

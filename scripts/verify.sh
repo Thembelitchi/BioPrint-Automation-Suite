@@ -70,19 +70,46 @@ if [[ -f "$PID/src/app.py" ]]; then
   done
 fi
 
+GUARD=projects/03_bioprint_guard
+if [[ -f "$GUARD/src/app.py" ]]; then
+  run "BioPrint-Guard: OPC UA scenario + PRD acceptance checks (alerts in memory)" \
+    bash -c "cd $GUARD && NEO4J_URI= python src/app.py --speed 10 --port 0"
+fi
+
 # --- live Neo4j stage ----------------------------------------------------------------
 TWIN=projects/01_graphprint_twin
-if [[ -f "$TWIN/src/main.py" ]]; then
+guard_two_process() {  # server first, wait for its port, then the gateway with a timeout
+  local port=4841 status=0 server_pid
+  ( cd "$GUARD" && exec python src/opcua_server.py --endpoint "opc.tcp://0.0.0.0:$port/bioprint/" \
+      --duration 30 --speed 10 --start-delay 4 ) &
+  server_pid=$!
+  for _ in $(seq 1 50); do
+    python -c "import socket,sys; s=socket.socket(); s.settimeout(0.2); sys.exit(s.connect_ex(('127.0.0.1',$port)))" && break
+    sleep 0.2
+  done
+  ( cd "$GUARD" && python src/gateway.py --endpoint "opc.tcp://localhost:$port/bioprint/" \
+      --samples 300 --duration 60 --require-alert ) || status=1
+  wait "$server_pid" || status=1
+  return $status
+}
+if [[ -f "$TWIN/src/main.py" || -f "$GUARD/src/app.py" ]]; then
   if [[ $NEO4J == off ]]; then
-    skip "GraphPrint-Twin live graph" "--no-neo4j"
+    skip "Live graph (GraphPrint-Twin, BioPrint-Guard)" "--no-neo4j"
   elif ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
-    skip "GraphPrint-Twin live graph" "Docker not available"
+    skip "Live graph (GraphPrint-Twin, BioPrint-Guard)" "Docker not available"
   else
     run "Start Neo4j (docker compose)" docker compose up -d neo4j
     export NEO4J_URI=bolt://localhost:7687 NEO4J_WAIT_SECONDS=120
-    run "GraphPrint-Twin: pipeline run" bash -c "cd $TWIN && python src/main.py --interval 0"
-    run "GraphPrint-Twin: live-graph integration tests" \
-      bash -c "cd $TWIN && python -m pytest -q tests/test_integration.py"
+    if [[ -f "$TWIN/src/main.py" ]]; then
+      run "GraphPrint-Twin: pipeline run" bash -c "cd $TWIN && python src/main.py --interval 0"
+      run "GraphPrint-Twin: live-graph integration tests" \
+        bash -c "cd $TWIN && python -m pytest -q tests/test_integration.py"
+    fi
+    if [[ -f "$GUARD/src/app.py" ]]; then
+      run "BioPrint-Guard: server -> gateway -> Neo4j (two processes)" guard_two_process
+      run "BioPrint-Guard: live-graph integration tests" \
+        bash -c "cd $GUARD && python -m pytest -q tests/test_integration.py"
+    fi
     [[ $KEEP -eq 1 ]] || docker compose stop neo4j >/dev/null
   fi
 fi
