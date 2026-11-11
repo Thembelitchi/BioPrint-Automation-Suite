@@ -4,6 +4,8 @@ Run from the project folder::
 
     python src/app.py                 # 30 s at 10 Hz in real time, wear fault after 15 s
     python src/app.py --speed 10      # same samples, 10x faster (about 3 s)
+    python src/app.py --detector iforest   # Isolation Forest instead of Z-score + EWMA
+    python src/app.py --baseline frozen    # fix the healthy limits instead of rolling them
     NEO4J_URI=bolt://localhost:7687 python src/app.py   # write the alert into the shared twin
 
 This starts the simulated OPC UA server and the gateway in one process and
@@ -33,8 +35,8 @@ from typing import Any
 
 import pandas as pd
 from alert_store import COMPONENT_ID, InMemoryAlertSink
-from anomaly_detector import ALERT_THRESHOLD, StreamingAnomalyDetector
-from gateway import GatewayReport, OpcUaGateway, sink_from_env
+from anomaly_detector import ALERT_THRESHOLD, Detector, make_detector
+from gateway import GatewayReport, OpcUaGateway, add_detector_arguments, sink_from_env
 from motor_model import SIGNALS, StepperMotorSimulator
 from opcua_server import NODE_PATH, MotorOpcUaServer
 
@@ -62,8 +64,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--baseline-samples",
         type=int,
         default=100,
-        help="readings used to fix the healthy baseline (default 100 = 10 s)",
+        help="readings in the healthy baseline window (default 100 = 10 s)",
     )
+    add_detector_arguments(parser)
     parser.add_argument("--speed", type=float, default=1.0, help="wall-clock speed-up (default 1)")
     parser.add_argument("--seed", type=int, default=42, help="simulator random seed")
     parser.add_argument(
@@ -86,6 +89,7 @@ async def run_scenario(
     port: int = 0,
     sink: Any = None,
     timeout_s: float | None = None,
+    detector: Detector | None = None,
 ) -> tuple[GatewayReport, MotorOpcUaServer, list[float]]:
     """Run server and gateway together; return the report, the server and the true wear levels."""
     port = port or free_port()
@@ -98,7 +102,7 @@ async def run_scenario(
     gateway = OpcUaGateway(
         f"opc.tcp://localhost:{port}/bioprint/",
         sink or InMemoryAlertSink(),
-        StreamingAnomalyDetector(baseline_samples=baseline_samples),
+        detector or make_detector(baseline_samples=baseline_samples),
     )
     if timeout_s is None:
         timeout_s = duration_s / speed + 30.0
@@ -195,7 +199,13 @@ def evaluate(
     return checks
 
 
-def plot(frame: pd.DataFrame, fault_after_s: float | None, baseline_samples: int, path: Path):
+def plot(
+    frame: pd.DataFrame,
+    fault_after_s: float | None,
+    baseline_samples: int,
+    path: Path,
+    label: str = "rolling Z-score + EWMA",
+) -> None:
     """Three signals and the risk score on a shared time axis."""
     import matplotlib
 
@@ -229,8 +239,8 @@ def plot(frame: pd.DataFrame, fault_after_s: float | None, baseline_samples: int
             ax.axvline(float(crossed["t_s"].iloc[0]), color="#d62728", lw=1)
         ax.grid(alpha=0.25)
     axes[0].set_title(
-        "BioPrint-Guard: stepper-motor wear detection over OPC UA (simulated)\n"
-        "blue band = baseline window, orange dashed = wear onset, red = alert raised",
+        f"BioPrint-Guard: stepper-motor wear detection over OPC UA (simulated, {label})\n"
+        "blue band = first baseline window, orange dashed = wear onset, red = alert raised",
         fontsize=11,
     )
     risk.legend(loc="upper left", fontsize=8)
@@ -255,6 +265,7 @@ async def _main(args: argparse.Namespace) -> int:
             args.seed,
             args.port,
             sink,
+            detector=make_detector(args.detector, args.baseline, args.baseline_samples),
         )
         graph_state = await sink.alert_state(COMPONENT_ID)
     finally:
@@ -267,7 +278,13 @@ async def _main(args: argparse.Namespace) -> int:
 
     OUTPUT_DIR.mkdir(exist_ok=True)
     frame.to_csv(OUTPUT_DIR / "guard_scores.csv", index=False)
-    plot(frame, args.fault_after, args.baseline_samples, OUTPUT_DIR / "guard_risk_score.png")
+    label = (
+        "Isolation Forest + EWMA"
+        if args.detector == "iforest"
+        else f"{args.baseline} Z-score + EWMA"
+    )
+    plot(frame, args.fault_after, args.baseline_samples, OUTPUT_DIR / "guard_risk_score.png", label)
+    log.info("Detector: %s", label)
     (OUTPUT_DIR / "acceptance.json").write_text(json.dumps(checks, indent=2) + "\n")
 
     for name, check in checks.items():

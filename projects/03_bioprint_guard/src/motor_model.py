@@ -75,6 +75,8 @@ class StepperMotorSimulator:
         fault_after_s: When wear starts. ``None`` keeps the motor healthy.
         wear_ramp_s: Time for wear to go from 0 to 1.
         params: Operating point and fault response.
+        temp_drift_c_per_min: Benign housing-temperature drift, e.g. the factory
+            warming through the day. It is not a fault and is not counted as wear.
         epoch: Timestamp of the first sample. Defaults to a fixed date so runs
             are reproducible; the OPC UA server passes its start time instead.
     """
@@ -86,6 +88,7 @@ class StepperMotorSimulator:
         fault_after_s: float | None = 15.0,
         wear_ramp_s: float = 10.0,
         params: MotorParameters | None = None,
+        temp_drift_c_per_min: float = 0.0,
         epoch: datetime = SIM_EPOCH,
     ) -> None:
         if sample_period_s <= 0:
@@ -96,6 +99,7 @@ class StepperMotorSimulator:
         self.fault_after_s = fault_after_s
         self.wear_ramp_s = wear_ramp_s
         self.params = params or MotorParameters()
+        self.temp_drift_c_per_min = temp_drift_c_per_min
         self.epoch = epoch
         self._rng = np.random.default_rng(seed)
         self._index = 0
@@ -120,7 +124,8 @@ class StepperMotorSimulator:
 
         noise = self._rng.standard_normal(3)
         current = p.current_nominal_a + p.current_wear_gain_a * wear + p.current_noise_a * noise[0]
-        temp = p.temp_nominal_c + self._temp_rise + p.temp_noise_c * noise[1]
+        drift = self.temp_drift_c_per_min * t / 60.0
+        temp = p.temp_nominal_c + drift + self._temp_rise + p.temp_noise_c * noise[1]
         vibration = (
             p.vibration_nominal_hz
             + p.vibration_wear_gain_hz * wear

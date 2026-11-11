@@ -154,7 +154,12 @@ jobs:
       - name: Unit and OPC UA loopback tests (FR-1 to FR-3)
         run: NEO4J_URI= python -m pytest
 
-      - name: Scenario with acceptance checks, alerts in memory (FR-1 to FR-4)
+      - name: Scenario with the frozen baseline and with the Isolation Forest
+        run: |
+          NEO4J_URI= python src/app.py --speed 10 --port 0 --baseline frozen
+          NEO4J_URI= python src/app.py --speed 10 --port 0 --detector iforest
+
+      - name: Scenario with acceptance checks, default detector, alerts in memory (FR-1 to FR-4)
         run: NEO4J_URI= python src/app.py --speed 10 --port 0
 
       - name: Server, then gateway, then graph assertion (FR-4)

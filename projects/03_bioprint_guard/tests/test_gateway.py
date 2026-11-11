@@ -7,7 +7,7 @@ from datetime import timedelta
 
 import pytest
 from alert_store import COMPONENT_ID, AlertResult, InMemoryAlertSink
-from anomaly_detector import ALERT_THRESHOLD
+from anomaly_detector import ALERT_THRESHOLD, make_detector
 from app import evaluate, free_port, run_scenario, to_frame
 from gateway import Backoff, OpcUaGateway, SampleAssembler
 from motor_model import SIGNALS, SIM_EPOCH, StepperMotorSimulator
@@ -131,6 +131,21 @@ def test_values_survive_the_opc_ua_round_trip_exactly() -> None:
     reference = StepperMotorSimulator(seed=9)
     expected = [reference.read().values() for _ in range(120)]
     assert [r.values for r in report.records] == expected  # in order, none lost or altered
+
+
+@pytest.mark.parametrize("kind,baseline", [("zscore", "frozen"), ("iforest", "rolling")])
+def test_other_detectors_pass_the_same_scenario_over_opc_ua(kind: str, baseline: str) -> None:
+    if kind == "iforest":
+        pytest.importorskip("sklearn")
+    sink = InMemoryAlertSink()
+    report, server, wear = asyncio.run(
+        run_scenario(speed=SPEED, sink=sink, detector=make_detector(kind, baseline))
+    )
+    frame = to_frame(report, wear, 0.1)
+    state = asyncio.run(sink.alert_state(COMPONENT_ID))
+    checks = evaluate(frame, report, server.samples_published, 15.0, state, "InMemoryAlertSink")
+    assert all(check["passed"] for check in checks.values()), checks
+    assert len(sink.open) == 1
 
 
 def test_healthy_motor_raises_no_alert() -> None:

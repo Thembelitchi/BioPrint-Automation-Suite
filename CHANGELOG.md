@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ## [Unreleased]
 
 ### Added
+- `guard`: **rolling baseline** for the Z-score detector, as the original design described, now the default. Readings enter the reference window after a 5 s lag, and the window is held while the smoothed distance is above 2 SDs, so a fault is not learned as normal. `--baseline frozen` keeps the fixed-limit behaviour of v0.5.0.
+- `guard`: **Isolation Forest detector** (`--detector iforest`, scikit-learn), trained on the baseline window, with its anomaly score rescaled between the baseline median and the forest's saturation point before EWMA smoothing.
+- `guard`: `temp_drift_c_per_min` on the motor simulator, a benign thermal drift used to test the baselines against each other.
+- `guard`: tests for both baseline modes (benign drift, hold during a fault, lag, and the slow-wear blind spot of a rolling window) and for the Isolation Forest; 79 tests in total.
+- `scripts/verify.sh` and the workflow also run the Guard scenario with the frozen baseline and with the Isolation Forest.
 - `scripts/verify.sh`: runs lint, every project's tests, the scenario runs and (when Docker is available) the live Neo4j stage locally, with a pass/fail/skip summary.
 
 ### Changed

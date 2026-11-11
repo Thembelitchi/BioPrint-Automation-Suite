@@ -34,7 +34,7 @@ Feedback goes through the [Expert review issue form](https://github.com/Thembeli
 |---|---|---|---|
 | 🏗️ | [**GraphPrint-Twin**](./projects/01_graphprint_twin) | Simulated 10 Hz PLC telemetry streamed into a Neo4j semantic digital twin as one bucket per printed layer, with one-query forensic traceback from a defect to its material batch. This project also owns the suite's [shared graph schema](./docs/graph-schema.md). | ✅ v0.2.0 |
 | 🧪 | [**BioPrint-PID**](./projects/02_bioprint_pid) | A discrete PID controller with anti-windup regulating a polymer extruder (thermal mass plus a shear-thinning melt model), monitored by clinical Westgard rules (1-2s, 1-3s, 2-2s). | ✅ v0.3.0 |
-| 🛡️ | [**BioPrint-Guard**](./projects/03_bioprint_guard) | An async OPC UA server streaming motor current, vibration and temperature at 10 Hz. A gateway scores wear from 0 to 1 against a frozen healthy baseline and raises maintenance alerts in the same Neo4j twin. | ✅ v0.5.0 |
+| 🛡️ | [**BioPrint-Guard**](./projects/03_bioprint_guard) | An async OPC UA server streaming motor current, vibration and temperature at 10 Hz. A gateway scores wear from 0 to 1 (rolling multivariate Z-score + EWMA, or an optional Isolation Forest) and raises maintenance alerts in the same Neo4j twin. | ✅ v0.5.0 |
 
 ## Architecture
 
@@ -68,7 +68,7 @@ A roller door opens at 15 s. The PID loop recovers within about 5 s, and the Wes
 
 ![BioPrint-Guard: motor current, housing temperature, vibration and the risk score](./assets/guard_risk_score.png)
 
-Wear starts at 15 s. The limits were fixed from the first 10 s of healthy running, so the slow drift cannot become the new normal, and the alert is raised 3.8 s after onset, at 38 % wear.
+Wear starts at 15 s. The rolling baseline is held as soon as the motor looks abnormal, so the fault cannot become the new normal, and the alert is raised 4.0 s after onset, at 40 % wear.
 
 GraphPrint-Twin and BioPrint-Guard write into **the same graph**. A printer's telemetry and the maintenance alerts on its stepper motor sit on connected nodes, so one query can answer questions like "which walls were printed while this motor was degrading?" More detail is in [`docs/architecture.md`](./docs/architecture.md).
 

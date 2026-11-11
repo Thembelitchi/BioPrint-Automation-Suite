@@ -19,6 +19,8 @@ before it::
 Run it against a server that is already up (from the project folder)::
 
     python src/gateway.py --duration 30
+    python src/gateway.py --detector iforest      # Isolation Forest instead of Z-score
+    python src/gateway.py --baseline frozen       # never adapt the healthy limits
     NEO4J_URI=bolt://localhost:7687 python src/gateway.py --samples 300
 
 Without ``NEO4J_URI`` alerts are kept in memory and logged.
@@ -37,7 +39,15 @@ from datetime import datetime
 from typing import Any
 
 from alert_store import COMPONENT_ID, AlertResult, AlertSink, InMemoryAlertSink, Neo4jAlertSink
-from anomaly_detector import ScoredSample, StreamingAnomalyDetector, severity_for
+from anomaly_detector import (
+    BASELINE_MODES,
+    DETECTORS,
+    Detector,
+    ScoredSample,
+    StreamingAnomalyDetector,
+    make_detector,
+    severity_for,
+)
 from asyncua import Client
 from motor_model import SIGNALS
 from opcua_server import NAMESPACE_URI, NODE_PATH, STATUS_FIELD
@@ -166,7 +176,7 @@ class OpcUaGateway:
         self,
         endpoint: str = DEFAULT_ENDPOINT,
         sink: AlertSink | None = None,
-        detector: StreamingAnomalyDetector | None = None,
+        detector: Detector | None = None,
         component_id: str = COMPONENT_ID,
         publish_interval_ms: float = 50.0,
         backoff: Backoff | None = None,
@@ -174,7 +184,7 @@ class OpcUaGateway:
     ) -> None:
         self.endpoint = endpoint
         self.sink: AlertSink = sink or InMemoryAlertSink()
-        self.detector = detector or StreamingAnomalyDetector()
+        self.detector: Detector = detector or StreamingAnomalyDetector()
         self.component_id = component_id
         self.publish_interval_ms = publish_interval_ms
         self.backoff = backoff or Backoff()
@@ -344,6 +354,24 @@ def sink_from_env(component_id: str = COMPONENT_ID) -> AlertSink:
     return InMemoryAlertSink()
 
 
+def add_detector_arguments(parser: argparse.ArgumentParser) -> None:
+    """``--detector`` and ``--baseline``, shared by the gateway and the scenario app."""
+    parser.add_argument(
+        "--detector",
+        choices=DETECTORS,
+        default="zscore",
+        help="zscore: multivariate Z-score + EWMA (default); iforest: Isolation Forest "
+        "(needs scikit-learn)",
+    )
+    parser.add_argument(
+        "--baseline",
+        choices=BASELINE_MODES,
+        default="rolling",
+        help="zscore only. rolling: limits follow slow benign drift and are held during a "
+        "fault (default); frozen: limits fixed from the first window",
+    )
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="BioPrint-Guard OPC UA gateway")
     parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="OPC UA server endpoint")
@@ -353,8 +381,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--baseline-samples",
         type=int,
         default=100,
-        help="readings used to fix the healthy baseline (default 100 = 10 s at 10 Hz)",
+        help="readings in the healthy baseline window (default 100 = 10 s at 10 Hz)",
     )
+    add_detector_arguments(parser)
     parser.add_argument(
         "--require-alert",
         action="store_true",
@@ -366,7 +395,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 async def _main(args: argparse.Namespace) -> int:
     sink = sink_from_env()
     gateway = OpcUaGateway(
-        args.endpoint, sink, StreamingAnomalyDetector(baseline_samples=args.baseline_samples)
+        args.endpoint, sink, make_detector(args.detector, args.baseline, args.baseline_samples)
     )
     try:
         report = await gateway.run(max_samples=args.samples, duration_s=args.duration)

@@ -74,6 +74,17 @@ GUARD=projects/03_bioprint_guard
 if [[ -f "$GUARD/src/app.py" ]]; then
   run "BioPrint-Guard: OPC UA scenario + PRD acceptance checks (alerts in memory)" \
     bash -c "cd $GUARD && NEO4J_URI= python src/app.py --speed 10 --port 0"
+  run "BioPrint-Guard: scenario with the frozen baseline" \
+    bash -c "cd $GUARD && NEO4J_URI= python src/app.py --speed 10 --port 0 --baseline frozen"
+  if python -c "import sklearn" >/dev/null 2>&1; then
+    run "BioPrint-Guard: scenario with the Isolation Forest detector" \
+      bash -c "cd $GUARD && NEO4J_URI= python src/app.py --speed 10 --port 0 --detector iforest"
+  else
+    skip "BioPrint-Guard: Isolation Forest detector" "scikit-learn not installed; use --install"
+  fi
+  # Leave the default detector's chart and data in output/.
+  run "BioPrint-Guard: default scenario outputs" \
+    bash -c "cd $GUARD && NEO4J_URI= python src/app.py --speed 10 --port 0 >/dev/null 2>&1"
 fi
 
 # --- live Neo4j stage ----------------------------------------------------------------
