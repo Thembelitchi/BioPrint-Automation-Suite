@@ -4,7 +4,7 @@ about: Something doesn't run or gives the wrong result
 labels: bug
 ---
 
-**Sub-project:** GraphPrint-Twin / BioPrint-PID / BioPrint-Guard / CI
+**Sub-project:** GraphPrint-Twin / BioPrint-PID / BioPrint-Guard / verification script
 
 **What happened**
 

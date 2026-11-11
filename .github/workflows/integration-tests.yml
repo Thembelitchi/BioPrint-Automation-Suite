@@ -29,7 +29,151 @@ jobs:
       - name: Ruff format check
         run: ruff format --check .
 
-  # Sub-project jobs are added as each release ships:
-  #   v0.2.0  graphprint-twin  (Neo4j service container)
-  #   v0.3.0  bioprint-pid     (dashboard uploaded as artifact)
-  #   v0.4.0  bioprint-guard   (OPC UA server -> gateway -> Neo4j assertion)
+  graphprint-twin:
+    name: GraphPrint-Twin (Neo4j)
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: projects/01_graphprint_twin
+
+    services:
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: none
+        ports:
+          - 7687:7687
+          - 7474:7474
+
+    env:
+      NEO4J_URI: bolt://localhost:7687
+      # The bridge polls until Neo4j accepts Bolt connections (no image-specific health check needed).
+      NEO4J_WAIT_SECONDS: "120"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: projects/01_graphprint_twin/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Unit tests (FR-1, FR-3, layer bucketing, IFC)
+        run: NEO4J_URI= python -m pytest
+
+      - name: Telemetry pipeline, 10 layers x 600 samples at 10 Hz (FR-1 to FR-4)
+        run: python src/main.py --layers 10 --samples-per-layer 600 --interval 1.0
+
+      - name: Graph integration tests (FR-2 to FR-4)
+        run: python -m pytest tests/test_integration.py
+
+      - name: Upload traceback
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphprint-twin-traceback
+          path: projects/01_graphprint_twin/output/
+          if-no-files-found: ignore
+
+  bioprint-pid:
+    name: BioPrint-PID (control + Westgard QC)
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: projects/02_bioprint_pid
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: projects/02_bioprint_pid/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Unit, scenario and Structured Text port tests
+        run: python -m pytest
+
+      - name: 30 s extrusion run with acceptance checks
+        run: python src/app.py
+
+      - name: Reviewer override example (config merge + model sensitivity)
+        run: python src/app.py --config config/examples/winter_shop_high_fibre.toml --report-only
+
+      - name: Upload dashboard and run data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bioprint-pid-dashboard
+          path: projects/02_bioprint_pid/output/
+          if-no-files-found: warn
+
+  bioprint-guard:
+    name: BioPrint-Guard (OPC UA -> gateway -> Neo4j)
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: projects/03_bioprint_guard
+
+    services:
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: none
+        ports:
+          - 7687:7687
+
+    env:
+      NEO4J_WAIT_SECONDS: "120"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: projects/03_bioprint_guard/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Unit and OPC UA loopback tests (FR-1 to FR-3)
+        run: NEO4J_URI= python -m pytest
+
+      - name: Scenario with acceptance checks, alerts in memory (FR-1 to FR-4)
+        run: NEO4J_URI= python src/app.py --speed 10 --port 0
+
+      - name: Server, then gateway, then graph assertion (FR-4)
+        env:
+          NEO4J_URI: bolt://localhost:7687
+        run: |
+          python src/opcua_server.py --duration 30 --speed 10 --start-delay 5 &
+          python src/gateway.py --samples 300 --duration 90 --require-alert
+          wait
+
+      - name: Graph integration tests (FR-4)
+        env:
+          NEO4J_URI: bolt://localhost:7687
+        run: python -m pytest tests/test_integration.py
+
+      - name: Upload chart and run data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bioprint-guard-scores
+          path: projects/03_bioprint_guard/output/
+          if-no-files-found: warn

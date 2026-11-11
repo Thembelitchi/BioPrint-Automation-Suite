@@ -12,15 +12,29 @@ Before working with industrial data and knowledge graphs, I spent more than a de
 
 > **Everything here is simulated.** PLC registers, OPC UA nodes, motor telemetry and polymer behaviour are all modelled in Python. No physical hardware is involved. The point is the architecture and the engineering, which carry over to real equipment.
 
+## 🔍 For expert reviewers
+
+This project crosses five specialisms, and I want each of them to be able to test it on their own terms. The **[Expert Reviewer Guide](./docs/reviewers.md)** gives each one a 10-minute path, the specific questions I'd like answered, and the limitations I already know about:
+
+| If you are a… | You'll want |
+|---|---|
+| **LFAM process engineer** | Every machine parameter is in an [annotated config](./projects/02_bioprint_pid/config/default.toml) you can override with `--config`, plus a layer-time / inter-layer adhesion window vs ambient temperature |
+| **Polymer / materials scientist** | Power-law melt with Arrhenius K(T), Krieger-Dougherty fibre loading and Mw-based recycling effects, with every coefficient in the [assumptions register](./docs/model-assumptions.md) |
+| **Robotic construction operations lead** | Walls carry IFC GlobalIds, so QC results join to the BIM model; operations queries; an OPC UA predictive-maintenance gateway (Guard) writing alerts into the same graph |
+| **Industrial digital twin architect** | Graph aligned with ISA-95, AAS ids and an OPC UA companion-spec mapping, with honest gaps ([standards alignment](./docs/standards-alignment.md)) |
+| **Controls engineer** | PID + Westgard ported to [IEC 61131-3 Structured Text](./projects/02_bioprint_pid/plc/), with TcUnit suites and reference vectors; the test suite checks the ST logic against Python to 1e-9 |
+
+Feedback goes through the [Expert review issue form](https://github.com/Thembelitchi/BioPrint-Automation-Suite/issues/new?template=expert_review.yml).
+
 ---
 
 ## The three sub-projects
 
 | | Project | What it shows | Status |
 |---|---|---|---|
-| 🏗️ | [**GraphPrint-Twin**](./projects/01_graphprint_twin) | Simulated PLC telemetry streamed into a Neo4j semantic digital twin, with one-query forensic traceback from a defect to its material batch. This project also owns the suite's [shared graph schema](./docs/graph-schema.md). | Planned for v0.2.0 |
-| 🧪 | [**BioPrint-PID**](./projects/02_bioprint_pid) | A discrete PID controller with anti-windup regulating a polymer extruder (thermal mass plus a shear-thinning melt model), monitored by clinical Westgard rules (1-2s, 1-3s, 2-2s). | Planned for v0.3.0 |
-| 🛡️ | [**BioPrint-Guard**](./projects/03_bioprint_guard) | An async OPC UA server streaming motor current, vibration and temperature at 10 Hz. A gateway scores wear from 0 to 1 and raises maintenance alerts in the same Neo4j twin. | Planned for v0.4.0 |
+| 🏗️ | [**GraphPrint-Twin**](./projects/01_graphprint_twin) | Simulated 10 Hz PLC telemetry streamed into a Neo4j semantic digital twin as one bucket per printed layer, with one-query forensic traceback from a defect to its material batch. This project also owns the suite's [shared graph schema](./docs/graph-schema.md). | ✅ v0.2.0 |
+| 🧪 | [**BioPrint-PID**](./projects/02_bioprint_pid) | A discrete PID controller with anti-windup regulating a polymer extruder (thermal mass plus a shear-thinning melt model), monitored by clinical Westgard rules (1-2s, 1-3s, 2-2s). | ✅ v0.3.0 |
+| 🛡️ | [**BioPrint-Guard**](./projects/03_bioprint_guard) | An async OPC UA server streaming motor current, vibration and temperature at 10 Hz. A gateway scores wear from 0 to 1 against a frozen healthy baseline and raises maintenance alerts in the same Neo4j twin. | ✅ v0.5.0 |
 
 ## Architecture
 
@@ -44,6 +58,18 @@ flowchart LR
     GW -- "score ≥ 0.85" --> NEO
 ```
 
+### BioPrint-PID at a glance
+
+![BioPrint-PID dashboard: tracking, controller effort, nozzle pressure and a Levey-Jennings chart](./assets/pid_step_response.png)
+
+A roller door opens at 15 s. The PID loop recovers within about 5 s, and the Westgard monitor flags the excursion 0.2 s after onset (1-3s, then 2-2s). That is the clinical-lab habit of judging a run by its control results, applied to a polymer extruder.
+
+### BioPrint-Guard at a glance
+
+![BioPrint-Guard: motor current, housing temperature, vibration and the risk score](./assets/guard_risk_score.png)
+
+Wear starts at 15 s. The limits were fixed from the first 10 s of healthy running, so the slow drift cannot become the new normal, and the alert is raised 3.8 s after onset, at 38 % wear.
+
 GraphPrint-Twin and BioPrint-Guard write into **the same graph**. A printer's telemetry and the maintenance alerts on its stepper motor sit on connected nodes, so one query can answer questions like "which walls were printed while this motor was degrading?" More detail is in [`docs/architecture.md`](./docs/architecture.md).
 
 ## Quick start
@@ -56,7 +82,15 @@ cd BioPrint-Automation-Suite
 docker compose up -d neo4j
 ```
 
-Each sub-project has its own `requirements.txt` and README with run instructions. These arrive as each release ships.
+Then run a sub-project, for example GraphPrint-Twin:
+
+```bash
+cd projects/01_graphprint_twin
+pip install -r requirements-dev.txt
+python src/main.py
+```
+
+Each sub-project's README has its own run instructions.
 
 ## Verification
 
@@ -67,7 +101,7 @@ scripts/verify.sh --install   # first run: installs each project's dev requireme
 scripts/verify.sh             # lint, all tests, scenario runs, live Neo4j stage
 ```
 
-It runs Ruff, then each sub-project's tests and scenario runs. If Docker is available, it starts Neo4j with `docker compose` and runs the graph pipeline and its live integration tests; otherwise it reports that stage as skipped. It ends with a pass / fail / skip summary and exits non-zero on any failure.
+It runs Ruff, then each sub-project's tests and scenario runs. If Docker is available, it starts Neo4j with `docker compose` and runs the Twin pipeline, the Guard server → gateway → graph run and both projects' live integration tests; otherwise it reports that stage as skipped. It ends with a pass / fail / skip summary and exits non-zero on any failure.
 
 The same checks are also defined as a GitHub Actions workflow ([`integration-tests.yml`](./.github/workflows/integration-tests.yml)) that can be started manually from the Actions tab.
 
@@ -76,10 +110,11 @@ The same checks are also defined as a GitHub Actions workflow ([`integration-tes
 | Release | Milestone |
 |---|---|
 | **v0.1.0** | Monorepo scaffold, docs, verification foundation |
-| v0.2.0 | GraphPrint-Twin |
-| v0.3.0 | BioPrint-PID |
-| v0.4.0 | BioPrint-Guard |
-| v0.5.0 | Cross-project integration tests in one workflow |
+| **v0.2.0** | GraphPrint-Twin |
+| **v0.3.0** | BioPrint-PID |
+| **v0.4.0** | Expert-review readiness: config-driven model, material and layer-time models, ISA-95/AAS/IFC alignment, Structured Text port |
+| **v0.5.0** | BioPrint-Guard |
+| v0.6.0 | Cross-project integration tests in one workflow |
 | v1.0.0 | Portfolio release: diagrams, screenshots, demo |
 
 The full history is in the [CHANGELOG](./CHANGELOG.md).
@@ -90,7 +125,7 @@ The full history is in the [CHANGELOG](./CHANGELOG.md).
 BioPrint-Automation-Suite/
 ├── .github/            Optional workflow, issue and PR templates
 ├── scripts/verify.sh   One-command local verification
-├── docs/               Architecture notes and the shared graph schema
+├── docs/               Reviewer guide, assumptions register, graph schema, standards alignment
 ├── projects/
 │   ├── 01_graphprint_twin/
 │   ├── 02_bioprint_pid/
