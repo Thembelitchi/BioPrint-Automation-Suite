@@ -1,0 +1,16 @@
+# Example reviewer override: a winter shift in an unheated print hall, printing a
+# higher-fibre batch that has already been reprocessed three times, with layer
+# fans running. Only the values that differ from config/default.toml are listed.
+#
+#   python src/app.py --config config/examples/winter_shop_high_fibre.toml
+
+[thermal]
+ambient_temp = 12.0          # °C  unheated hall in winter
+feed_temp = 12.0             # °C  pellets stored in the same hall
+
+[material]
+fibre_wt_pct = 25.0          # wt % GF
+recycle_generation = 3       # third reprocessing pass
+
+[layer]
+convective_h = 25.0          # W/(m²·K)  layer-cooling fans on

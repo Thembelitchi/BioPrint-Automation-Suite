@@ -64,11 +64,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Unit tests (FR-1, FR-3)
-        run: NEO4J_URI= python -m pytest tests/test_plc_simulator.py tests/test_database.py
+      - name: Unit tests (FR-1, FR-3, layer bucketing, IFC)
+        run: NEO4J_URI= python -m pytest
 
-      - name: Telemetry pipeline, 10 cycles (FR-1 to FR-4)
-        run: python src/main.py --cycles 10 --interval 1.0
+      - name: Telemetry pipeline, 10 layers x 600 samples at 10 Hz (FR-1 to FR-4)
+        run: python src/main.py --layers 10 --samples-per-layer 600 --interval 1.0
 
       - name: Graph integration tests (FR-2 to FR-4)
         run: python -m pytest tests/test_integration.py
@@ -102,11 +102,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Unit and scenario tests (FR-1 to FR-4, 50-seed robustness)
+      - name: Unit, scenario and Structured Text port tests
         run: python -m pytest
 
       - name: 30 s extrusion run with acceptance checks
         run: python src/app.py
+
+      - name: Reviewer override example (config merge + model sensitivity)
+        run: python src/app.py --config config/examples/winter_shop_high_fibre.toml --report-only
 
       - name: Upload dashboard and run data
         if: always()
@@ -117,4 +120,4 @@ jobs:
           if-no-files-found: warn
 
   # Planned:
-  #   v0.4.0  bioprint-guard   (OPC UA server -> gateway -> Neo4j assertion)
+  #   v0.5.0  bioprint-guard   (OPC UA server -> gateway -> Neo4j assertion)

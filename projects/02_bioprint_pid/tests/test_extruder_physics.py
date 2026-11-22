@@ -85,3 +85,36 @@ def test_gantry_profile_has_corners() -> None:
     assert speed.shape == (300,)
     assert set(np.unique(speed)) == {0.4, 1.0}
     assert (speed == 0.4).mean() == pytest.approx(0.2, abs=0.02)
+
+
+# --- composition effects (fibre loading, recycling) -------------------------
+
+from extruder_physics import MaterialParams  # noqa: E402
+
+
+def test_default_composition_matches_calibration() -> None:
+    assert MaterialParams().composition_ratio() == pytest.approx(1.0)
+
+
+def test_weight_to_volume_fraction() -> None:
+    m = MaterialParams()
+    # 15 wt % E-glass (2540) in PETG (1270): glass is twice as dense, so φ ≈ 8.1 %
+    assert m.volume_fraction(15.0) == pytest.approx(0.0811, abs=1e-3)
+    assert m.volume_fraction(0.0) == 0.0
+
+
+def test_more_fibre_raises_pressure() -> None:
+    low = ExtruderThermalMass(material=MaterialParams(fibre_wt_pct=5.0))
+    high = ExtruderThermalMass(material=MaterialParams(fibre_wt_pct=25.0))
+    assert high.nozzle_pressure(230.0, 1.0) > 45.0 > low.nozzle_pressure(230.0, 1.0)
+
+
+def test_more_recycling_lowers_pressure() -> None:
+    m = MaterialParams(recycle_generation=3)
+    expected = 45.0 * 0.95 ** (3.4 * 2)  # two passes beyond the calibration batch
+    assert ExtruderThermalMass(material=m).nozzle_pressure(230.0, 1.0) == pytest.approx(expected)
+
+
+def test_packing_limit_rejected() -> None:
+    with pytest.raises(ValueError, match="packing limit"):
+        MaterialParams().fibre_viscosity_factor(70.0)

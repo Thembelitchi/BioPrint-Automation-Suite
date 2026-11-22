@@ -18,6 +18,18 @@ scales as ``ΔP ∝ K(T) · Q^n``. The model is calibrated so that 230 °C at th
 nominal flow gives 45 bar. Colder melt is stiffer, so pressure rises. Because
 n < 1, doubling the flow less than doubles the pressure: that is shear thinning.
 
+Composition effects (reviewer-adjustable, see ``config/default.toml``) scale K:
+
+* **Fibre loading** uses the Krieger-Dougherty relation for suspensions,
+  ``η_r = (1 − φ/φ_m)^(−[η]·φ_m)``, where the weight fraction is converted to a
+  volume fraction φ through the fibre and matrix densities.
+* **Recycling** uses chain scission: each reprocessing pass keeps a fraction r of
+  the weight-average molecular weight, and entangled melts follow ``η₀ ∝ Mw^3.4``,
+  so K scales as ``r^(3.4·Δgeneration)``.
+
+Both factors are applied *relative to the calibration batch*. With the default
+composition the model is unchanged: 45 bar at 230 °C and nominal flow.
+
 A **cold-extrusion interlock** keeps the auger off until the barrel first
 reaches its melt setpoint, the same protection a real PLC applies so that solid
 polymer is never forced through the screw.
@@ -28,7 +40,7 @@ for a specific machine.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -61,6 +73,56 @@ class RheologyParams:
 
 
 @dataclass
+class MaterialParams:
+    """Composition of the batch being printed, relative to the calibration batch."""
+
+    fibre_wt_pct: float = 15.0
+    reference_fibre_wt_pct: float = 15.0
+    fibre_density: float = 2540.0  # kg/m³, E-glass
+    matrix_density: float = 1270.0  # kg/m³, PETG
+    fibre_intrinsic_viscosity: float = 5.0  # Krieger-Dougherty [η]
+    max_packing_fraction: float = 0.35  # Krieger-Dougherty φ_m
+    recycle_generation: int = 1
+    reference_recycle_generation: int = 1
+    mw_retention_per_cycle: float = 0.95
+    mw_exponent: float = 3.4
+
+    def volume_fraction(self, wt_pct: float) -> float:
+        """Convert a fibre weight percentage to a volume fraction φ."""
+        if not 0.0 <= wt_pct < 100.0:
+            raise ValueError(f"fibre loading {wt_pct} wt % outside [0, 100)")
+        w = wt_pct / 100.0
+        v_fibre = w / self.fibre_density
+        v_matrix = (1.0 - w) / self.matrix_density
+        return v_fibre / (v_fibre + v_matrix)
+
+    def fibre_viscosity_factor(self, wt_pct: float) -> float:
+        """Krieger-Dougherty relative viscosity η_r for a fibre loading."""
+        phi = self.volume_fraction(wt_pct)
+        if phi >= self.max_packing_fraction:
+            raise ValueError(
+                f"fibre volume fraction {phi:.3f} at {wt_pct} wt % reaches the packing "
+                f"limit φ_m = {self.max_packing_fraction}; the melt would not flow"
+            )
+        exponent = -self.fibre_intrinsic_viscosity * self.max_packing_fraction
+        return float((1.0 - phi / self.max_packing_fraction) ** exponent)
+
+    def recycle_factor(self, generation: int) -> float:
+        """K scaling from molecular-weight loss after ``generation`` reprocessing passes."""
+        return float(self.mw_retention_per_cycle ** (self.mw_exponent * generation))
+
+    def composition_ratio(self) -> float:
+        """K(batch) / K(calibration batch) at the same temperature."""
+        fibre = self.fibre_viscosity_factor(self.fibre_wt_pct) / self.fibre_viscosity_factor(
+            self.reference_fibre_wt_pct
+        )
+        recycle = self.recycle_factor(self.recycle_generation) / self.recycle_factor(
+            self.reference_recycle_generation
+        )
+        return fibre * recycle
+
+
+@dataclass
 class ExtruderState:
     temperature: float
     pressure: float = 0.0
@@ -79,21 +141,29 @@ class ExtruderThermalMass:
 
     thermal: ThermalParams = field(default_factory=ThermalParams)
     rheology: RheologyParams = field(default_factory=RheologyParams)
+    material: MaterialParams = field(default_factory=MaterialParams)
     melt_setpoint: float = 230.0
     interlock_band: float = 2.0  # auger enabled once T ≥ setpoint − band
     state: ExtruderState = field(init=False)
 
     def __post_init__(self) -> None:
+        # Private copy: disturbances mutate thermal parameters, and a shared
+        # config object must never leak one run's disturbance into the next.
+        self.thermal = replace(self.thermal)
+        self._composition = self.material.composition_ratio()
         self.state = ExtruderState(temperature=self.thermal.ambient_temp)
 
     # -- rheology --------------------------------------------------------------
 
     def consistency_ratio(self, temp_c: float) -> float:
-        """K(T) / K(T_ref): how much stiffer the melt is than at the reference temperature."""
+        """K(T, batch) / K(T_ref, calibration batch).
+
+        Combines the Arrhenius temperature term with the fibre and recycling factors.
+        """
         t = np.float64(temp_c) + KELVIN
         t_ref = self.rheology.reference_temp + KELVIN
         exponent = self.rheology.activation_energy / R_GAS * (1.0 / t - 1.0 / t_ref)
-        return float(np.exp(np.clip(exponent, -50.0, 50.0)))
+        return float(np.exp(np.clip(exponent, -50.0, 50.0))) * self._composition
 
     def nozzle_pressure(self, temp_c: float, flow_fraction: float) -> float:
         """Nozzle pressure (bar) for a melt temperature and flow fraction Q/Q_nom."""

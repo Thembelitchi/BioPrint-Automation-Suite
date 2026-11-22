@@ -5,6 +5,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+- `scripts/verify.sh`: runs lint, every project's tests, the scenario runs and (when Docker is available) the live Neo4j stage locally, with a pass/fail/skip summary.
+
+### Changed
+- The GitHub Actions workflow runs only when started manually; local verification is the primary path.
+- README: removed the workflow-status and release badges.
+
+## [0.4.0] - 2026-11-06 — Expert-review readiness
+
+The aim of this release is that each of five specialisms can evaluate the suite on its own terms: LFAM process engineers, polymer scientists, robotic construction operations leads, industrial digital twin architects and controls engineers.
+
+### Added
+- **Reviewer guide** (`docs/reviewers.md`): for each specialism, what is built, a 10-minute exercise, the specific questions I'd like answered, and the limitations I already know about. Includes a cross-disciplinary glossary.
+- **Assumptions register** (`docs/model-assumptions.md`): every model parameter (A-01 to A-27) with value, unit, basis, confidence, intended reviewer and what real data would replace it.
+- **Standards alignment** (`docs/standards-alignment.md`): ISA-95, ISA-88, AAS, IFC, OPC UA companion specs and IEC 61131-3, with explicit gaps.
+- **Expert review issue form** (`.github/ISSUE_TEMPLATE/expert_review.yml`).
+- `pid`: **config-driven model.** All parameters are in `config/default.toml` (annotated with units and assumption IDs). `--config` merges a reviewer's override, invalid or misspelt keys are rejected clearly, and `--report-only` lets reviewers explore out-of-spec values. A worked example (`config/examples/winter_shop_high_fibre.toml`) is included.
+- `pid`: **composition effects on melt viscosity.** Krieger-Dougherty fibre loading and Mw-based recycling degradation, applied relative to the calibration batch, plus a `material_sensitivity.png` chart and CSV.
+- `pid`: **layer-time / inter-layer adhesion window** vs factory ambient (`layer_thermal.py`, `layer_time_window.png`), with a Biot-number validity check.
+- `pid`: **IEC 61131-3 Structured Text port** of the PID and Westgard blocks (`plc/`), with TcUnit test suites, 300-scan reference vectors (CSV and ST GVL) and a generator. The test suite executes the ST logic with a small subset interpreter and matches Python to 1e-9.
+- `twin`: **layer-bucketed telemetry** (`layer_aggregator.py`). The 10 Hz samples of each printed layer are written as one `LayerTelemetry` node with summary statistics, anomaly offsets and implicit timestamps; raw arrays are kept only for anomalous layers (`--raw-policy`). Layers are chained with `NEXT_LAYER`. This cuts graph growth from ~864,000 nodes per printer per day to ~120. Ingest is one idempotent transaction per layer (`MERGE` on deterministic ids and on every relationship).
+- `twin`: **ISA-95 equipment hierarchy** (Site → Area → WorkCenter → printer), ISA-88 control-module level, **AAS ids** on assets, **IFC GlobalId** (`ifc.py`) and `IfcWall` class on wall segments, and materials-science properties on batches (`fibre_wt_pct`, `recycle_generation`, `moisture_ppm`, `material_definition`). The traceback now returns IFC ids and batch composition.
+
+### Changed
+- `twin`: **`TelemetryLog` (one node per reading) replaced by `LayerTelemetry`**; `ingest_telemetry` → `ingest_layer`; `prune_optimal_logs` → `prune_raw_arrays` (summaries are kept forever, raw arrays are dropped after N days); CLI `--cycles` → `--layers` / `--samples-per-layer`.
+- `twin`: the simulator now samples at 10 Hz on a simulated clock, with noise, reversion and upset rate rescaled for that rate.
+- `twin`: `MaterialBatch.fibre_pct` renamed to `fibre_wt_pct`.
+- `pid`: `app.simulate()` now takes a `SimulationConfig`; the module-level constants are gone.
+- Roadmap: BioPrint-Guard moves to v0.5.0 and cross-project integration to v0.6.0.
+- `pid`: the plant keeps a private copy of its thermal parameters, so a shared config object can never carry one run's disturbance into the next (regression test added).
+
+
 ## [0.3.0] - 2026-11-06
 
 ### Added
@@ -42,7 +74,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Issue templates, a pull request template and `CONTRIBUTING.md`.
 - MIT licence.
 
-[Unreleased]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/releases/tag/v0.1.0

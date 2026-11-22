@@ -8,13 +8,19 @@ from typing import Any
 import database
 import pytest
 from database import (
-    INGEST_QUERY,
+    LAYER_INGEST_QUERY,
     TOPOLOGY_PARAMS,
     TOPOLOGY_QUERY,
     DigitalTwinBridge,
     TopologyMissingError,
 )
+from layer_aggregator import summarise_layer
 from plc_simulator import PLCExtruderSimulator
+
+
+def make_layer(index: int = 0, printer: str = "Printer_01", wall: str = "Studio_Unit_BackWall"):
+    sim = PLCExtruderSimulator(seed=index)
+    return summarise_layer([sim.read_registers() for _ in range(50)], printer, wall, index, 0.1)
 
 
 class FakeRecord(dict):
@@ -90,16 +96,28 @@ def _placeholders(query: str) -> set[str]:
 
 
 def test_queries_are_fully_parameterised() -> None:
-    reading = PLCExtruderSimulator(seed=1).read_registers()
-    ingest_params = {"printer_id", "wall_id", *reading.to_params()}
-    assert _placeholders(INGEST_QUERY) == ingest_params
+    assert _placeholders(LAYER_INGEST_QUERY) == {
+        "printer_id",
+        "wall_id",
+        "layer_id",
+        "prev_layer_id",
+        "props",
+    }
     assert _placeholders(TOPOLOGY_QUERY) == set(TOPOLOGY_PARAMS)
     # No Python formatting artefacts left in the Cypher text.
-    assert "{}" not in INGEST_QUERY and "%s" not in INGEST_QUERY
+    assert "{}" not in LAYER_INGEST_QUERY and "%s" not in LAYER_INGEST_QUERY
 
 
 def test_topology_is_merge_only() -> None:
     assert "CREATE " not in TOPOLOGY_QUERY.replace("ON CREATE", "")
+
+
+def test_layer_ingest_is_idempotent() -> None:
+    """Retried writes must update, never duplicate: no CREATE anywhere in the layer query."""
+    assert "CREATE" not in LAYER_INGEST_QUERY
+    assert "MERGE (b:LayerTelemetry {id: $layer_id})" in LAYER_INGEST_QUERY
+    assert "MERGE (p)-[:GENERATED]->(b)" in LAYER_INGEST_QUERY
+    assert "MERGE (prev)-[:NEXT_LAYER]->(b)" in LAYER_INGEST_QUERY
 
 
 def test_initialize_creates_constraints_then_topology(bridge) -> None:
@@ -110,27 +128,52 @@ def test_initialize_creates_constraints_then_topology(bridge) -> None:
     assert queries[-1] == TOPOLOGY_QUERY
 
 
-def test_ingest_sends_reading_as_parameters(bridge) -> None:
+def test_ingest_sends_layer_as_parameters(bridge) -> None:
     twin, fake = bridge
-    fake.rows = [FakeRecord(id="abc")]
-    reading = PLCExtruderSimulator(seed=2).read_registers()
+    fake.rows = [FakeRecord(id="Printer_01/Studio_Unit_BackWall/L0003")]
+    layer = make_layer(3)
 
-    assert twin.ingest_telemetry("Printer_01", "Studio_Unit_BackWall", reading) == "abc"
+    assert twin.ingest_layer(layer) == layer.id
     query, params = fake.calls[-1]
-    assert query == INGEST_QUERY
-    assert params["nozzle_temp"] == reading.nozzle_temp
-    assert params["status"] == reading.status
-    assert params["printer_id"] == "Printer_01"
+    assert query == LAYER_INGEST_QUERY
+    assert params["layer_id"] == layer.id
+    assert params["prev_layer_id"] == "Printer_01/Studio_Unit_BackWall/L0002"
+    assert params["props"]["n_samples"] == 50
+    assert params["props"]["temp_mean"] == layer.temp_mean
 
 
 def test_ingest_raises_when_topology_missing(bridge) -> None:
     twin, fake = bridge
-    fake.rows = []  # MATCH found nothing, so nothing was created
+    fake.rows = []  # MATCH found nothing, so nothing was written
     with pytest.raises(TopologyMissingError):
-        twin.ingest_telemetry("Ghost", "Nowhere", PLCExtruderSimulator(seed=0).read_registers())
+        twin.ingest_layer(make_layer(0, printer="Ghost", wall="Nowhere"))
 
 
 def test_prune_rejects_bad_window(bridge) -> None:
     twin, _ = bridge
     with pytest.raises(ValueError):
-        twin.prune_optimal_logs(0)
+        twin.prune_raw_arrays(0)
+
+
+def test_main_loop_writes_one_bucket_per_layer(monkeypatch) -> None:
+    """Drive main.run() end to end with an in-memory bridge."""
+    import main
+
+    written = []
+
+    class MemoryBridge:
+        def ingest_layer(self, layer):
+            written.append(layer)
+            return layer.id
+
+    ids = main.run(
+        MemoryBridge(),
+        PLCExtruderSimulator(seed=42),
+        layers=10,
+        samples_per_layer=600,
+        interval_s=0.0,
+    )
+    assert len(ids) == len(written) == 10
+    assert sum(lay.n_samples for lay in written) == 6000
+    assert [lay.layer_index for lay in written] == list(range(10))
+    assert written[1].start_time > written[0].end_time  # continuous simulated clock

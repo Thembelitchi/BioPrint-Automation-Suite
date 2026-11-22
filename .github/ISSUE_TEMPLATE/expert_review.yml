@@ -1,0 +1,68 @@
+name: Expert review
+description: Challenge an assumption, a model, the architecture or the code from your domain experience
+title: "[Review] "
+labels: ["expert-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reviewing. The reviewer guide is in `docs/reviewers.md`, and every model parameter
+        is listed with its basis in `docs/model-assumptions.md` (IDs A-01 to A-27).
+  - type: dropdown
+    id: perspective
+    attributes:
+      label: Your perspective
+      options:
+        - LFAM process engineer
+        - Polymer / materials scientist
+        - Robotic construction operations / automation architect
+        - Industrial digital twin architect (ISA-95 / AAS / OPC UA)
+        - Controls engineer (PLC / IEC 61131-3)
+        - Clinical / laboratory quality
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - BioPrint-PID thermal / rheology model
+        - BioPrint-PID layer-time model
+        - BioPrint-PID controller or Westgard QC
+        - Structured Text port (plc/)
+        - GraphPrint-Twin graph schema / standards alignment
+        - BioPrint-Guard (OPC UA / predictive maintenance)
+        - Documentation
+    validations:
+      required: true
+  - type: input
+    id: assumption
+    attributes:
+      label: Assumption ID (if any)
+      placeholder: "e.g. A-26"
+  - type: textarea
+    id: finding
+    attributes:
+      label: What should change
+      description: The current value or design, what you'd use instead, and why.
+    validations:
+      required: true
+  - type: textarea
+    id: basis
+    attributes:
+      label: Basis
+      description: Datasheet, standard, published paper, test data or hands-on experience. Share only what you're free to share.
+  - type: textarea
+    id: override
+    attributes:
+      label: Optional TOML override
+      description: Values to merge over config/default.toml, so the change can be run with --config.
+      render: toml
+  - type: checkboxes
+    id: credit
+    attributes:
+      label: Credit
+      options:
+        - label: Please credit me by name in the CHANGELOG / release notes if this is adopted
