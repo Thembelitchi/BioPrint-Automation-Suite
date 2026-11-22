@@ -5,6 +5,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-06
+
+### Added
+- **BioPrint-PID** (`projects/02_bioprint_pid`):
+  - `DiscretePID`: parallel PID at dt = 0.1 s with derivative on measurement, filtered derivative, 0–100 % output clamp and anti-windup by conditional integration.
+  - `ExtruderThermalMass`: lumped thermal model (heater, ambient loss, cold-feed load), a power-law shear-thinning melt (n = 0.4) with Arrhenius K(T) calibrated to 45 bar at 230 °C, gantry-coupled auger flow and a cold-extrusion interlock.
+  - `BiomedicalQAMonitor`: Westgard 1-2s / 1-3s / 2-2s against SD fixed from a post-settling baseline, plus rolling mean, SD and CV%.
+  - `app.py`: 30 s scenario with an ambient disturbance at step 150; writes a four-panel dashboard (tracking, effort, pressure, Levey-Jennings), an untuned-vs-tuned comparison, CSVs and `acceptance.json`; exits non-zero if any PRD check fails; `--realtime` pacing.
+  - 36 tests, including a 50-seed robustness sweep (FR-1 holds for every seed, detection 50/50, false-reject rate bounded).
+- CI job `bioprint-pid`, which uploads the dashboard and run data as artifacts.
+- Dashboard and comparison charts in `assets/`, embedded in the READMEs.
+
+
 ## [0.2.0] - 2026-11-05
 
 ### Added
@@ -29,6 +42,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Issue templates, a pull request template and `CONTRIBUTING.md`.
 - MIT licence.
 
-[Unreleased]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Thembelitchi/BioPrint-Automation-Suite/releases/tag/v0.1.0
